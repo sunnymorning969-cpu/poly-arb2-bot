@@ -30,6 +30,10 @@ export const CONFIG = {
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
   ENABLE_1HR: process.env.ENABLE_1HR !== '0',
   
+  // ========== 跨池套利开关 ==========
+  // 跨池套利有方向风险，建议关闭
+  ENABLE_CROSS_POOL: process.env.ENABLE_CROSS_POOL === '1',
+  
   // ========== API ==========
   POLYMARKET_API: 'https://gamma-api.polymarket.com',
   CLOB_API: 'https://clob.polymarket.com',

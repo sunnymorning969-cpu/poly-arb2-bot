@@ -54,9 +54,10 @@ export const notifyBotStarted = async () => {
    • 单笔上限: $${CONFIG.MAX_ORDER_SIZE_USD}
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
+   • 跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启' : '❌ 关闭'}
 
 📌 <b>策略说明:</b>
-   同池优先 + 跨池优化
+   ${CONFIG.ENABLE_CROSS_POOL ? '同池优先 + 跨池优化' : '纯同池套利 (零风险)'}
    只交易 Up+Down < $${CONFIG.MAX_SAME_POOL_COST} 的机会
 `.trim();
 

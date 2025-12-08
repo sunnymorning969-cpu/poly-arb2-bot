@@ -37,6 +37,7 @@ const mainLoop = async () => {
   Logger.info(`单笔上限: $${CONFIG.MAX_ORDER_SIZE_USD}`);
   Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}`);
   Logger.info(`1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
+  Logger.info(`跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启(有风险)' : '❌ 关闭(安全)'}`)
   Logger.divider();
   
   // 实盘模式初始化

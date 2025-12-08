@@ -336,8 +336,8 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
       }
     }
     
-    // 2. 跨池套利
-    if (marketData.length >= 2) {
+    // 2. 跨池套利（默认关闭，有方向风险）
+    if (CONFIG.ENABLE_CROSS_POOL && marketData.length >= 2) {
       let cheapestUp = marketData[0];
       let cheapestDown = marketData[0];
       

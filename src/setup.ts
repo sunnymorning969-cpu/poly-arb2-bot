@@ -57,6 +57,11 @@ const setup = async () => {
   const enable15m = await question('开启15分钟场? (1=是, 0=否) [1]: ') || '1';
   const enable1h = await question('开启1小时场? (1=是, 0=否) [1]: ') || '1';
   
+  // 策略选择
+  console.log('\n━━━ 策略选择 ━━━');
+  console.log('⚠️  跨池套利有方向风险，建议关闭');
+  const enableCross = await question('开启跨池套利? (1=是, 0=否) [0]: ') || '0';
+  
   // 生成配置
   const envContent = `# ========== 钱包配置 ==========
 PRIVATE_KEY=${privateKey}
@@ -82,6 +87,10 @@ TRADE_COOLDOWN_MS=${cooldown}
 # ========== 市场开关 ==========
 ENABLE_15MIN=${enable15m}
 ENABLE_1HR=${enable1h}
+
+# ========== 策略开关 ==========
+# 跨池套利有方向风险，建议关闭 (0=关闭, 1=开启)
+ENABLE_CROSS_POOL=${enableCross}
 `;
 
   // 写入文件
