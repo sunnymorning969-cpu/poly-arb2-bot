@@ -129,7 +129,7 @@ export const executeArbitrage = async (
     
     // 两边都成交
     const realTotalCost = upAmount + downAmount;
-    Logger.success(`[实盘] ${typeTag} 买入 ${shares} shares | 成本 $${realTotalCost.toFixed(2)} | 利润 $${(shares - realTotalCost).toFixed(2)}`);
+    // 日志在 index.ts 中统一输出
     
     // 记录仓位
     addPosition({
