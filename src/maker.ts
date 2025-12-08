@@ -138,18 +138,18 @@ const checkAndBalance = async (slug: string, stats: CycleStats, market: any): Pr
       // 需要补 Down
       const downBook = getOrderBook(market.downTokenId);
       if (downBook && downBook.bestAsk > 0) {
-        const补单Cost = Math.abs(diff) * downBook.bestAsk;
+        const fillCost = Math.abs(diff) * downBook.bestAsk;
         stats.downFilled += Math.abs(diff);
-        stats.downCost += 补单Cost;
+        stats.downCost += fillCost;
         Logger.success(`   [模拟] 市价补单 ${Math.abs(diff)} Down @ $${downBook.bestAsk.toFixed(3)}`);
       }
     } else {
       // 需要补 Up
       const upBook = getOrderBook(market.upTokenId);
       if (upBook && upBook.bestAsk > 0) {
-        const 补单Cost = Math.abs(diff) * upBook.bestAsk;
+        const fillCost = Math.abs(diff) * upBook.bestAsk;
         stats.upFilled += Math.abs(diff);
-        stats.upCost += 补单Cost;
+        stats.upCost += fillCost;
         Logger.success(`   [模拟] 市价补单 ${Math.abs(diff)} Up @ $${upBook.bestAsk.toFixed(3)}`);
       }
     }
@@ -483,7 +483,7 @@ export const checkOrderStatus = async (): Promise<void> => {
         
         // 订单超时（超过30秒未完全成交则取消）
         if (Date.now() - order.createdAt > 30000 && order.filled < order.size) {
-          await client.cancelOrder(orderId);
+          await client.cancelOrder({ orderID: orderId });
           activeOrders.delete(orderId);
           Logger.info(`⏰ 取消超时订单: ${order.market.asset} ${order.side.toUpperCase()}`);
         }
@@ -553,7 +553,7 @@ export const cancelAllOrders = async (): Promise<void> => {
     
     for (const [orderId] of activeOrders) {
       try {
-        await client.cancelOrder(orderId);
+        await client.cancelOrder({ orderID: orderId });
       } catch (error) {
         // 忽略取消错误
       }
