@@ -1,11 +1,12 @@
 import CONFIG from './config';
 import Logger from './logger';
 import { initClient, getBalance, getWalletAddress } from './client';
-import { scanArbitrageOpportunities, refreshMarkets, getActiveBookCount } from './scanner';
+import { scanArbitrageOpportunities, refreshMarkets, getActiveBookCount, getMarkets } from './scanner';
 import { executeArbitrage } from './executor';
 import { getPositionCount, getTotalCost, getExpectedProfit, getStats, checkAndSettleExpired, getPositionSummary } from './positions';
 import { notifyBotStarted, notifySettlement, notifyRunningStats } from './telegram';
-import { closeWebSocket } from './orderbook-ws';
+import { closeWebSocket, getOrderBook } from './orderbook-ws';
+import { runMakerStrategy, checkOrderStatus, getMakerStats, cancelAllOrders } from './maker';
 
 const startTime = Date.now();
 
@@ -37,7 +38,11 @@ const mainLoop = async () => {
   Logger.info(`单笔上限: $${CONFIG.MAX_ORDER_SIZE_USD}`);
   Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}`);
   Logger.info(`1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
-  Logger.info(`跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启(有风险)' : '❌ 关闭(安全)'}`)
+  Logger.info(`跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启(有风险)' : '❌ 关闭(安全)'}`);
+  Logger.info(`挂单策略: ${CONFIG.ENABLE_MAKER ? '✅ 开启(推荐)' : '❌ 关闭'}`);
+  if (CONFIG.ENABLE_MAKER) {
+    Logger.info(`   挂单金额: $${CONFIG.MAKER_ORDER_SIZE_USD} | 最大失衡: ${CONFIG.MAKER_MAX_IMBALANCE}`);
+  }
   Logger.divider();
   
   // 实盘模式初始化
@@ -98,6 +103,12 @@ const mainLoop = async () => {
         }
       }
       
+      // 运行挂单策略
+      if (CONFIG.ENABLE_MAKER) {
+        await runMakerStrategy();
+        await checkOrderStatus();
+      }
+      
       // 检查结算
       const settlements = await checkAndSettleExpired();
       for (const settlement of settlements) {
@@ -123,6 +134,27 @@ const mainLoop = async () => {
         }
         
         Logger.info(`📊 WS: ${bookCount} books | 仓位: ${posCount} | 结算: ${stats.totalSettled} | 盈亏: ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}${balanceInfo}`);
+        
+        // 显示挂单统计
+        if (CONFIG.ENABLE_MAKER) {
+          const makerStats = getMakerStats();
+          if (makerStats.totalUp > 0 || makerStats.totalDown > 0) {
+            const diff = makerStats.totalUp - makerStats.totalDown;
+            Logger.info(`   📝 挂单累计: Up ${makerStats.totalUp} ($${makerStats.totalUpCost.toFixed(2)}) / Down ${makerStats.totalDown} ($${makerStats.totalDownCost.toFixed(2)}) | 平均成本: $${makerStats.avgCost.toFixed(4)} | 差额: ${diff >= 0 ? '+' : ''}${diff}`);
+          }
+        }
+        
+        // 显示当前市场成本（诊断）
+        const markets = getMarkets();
+        for (const m of markets) {
+          const upBook = getOrderBook(m.upTokenId);
+          const downBook = getOrderBook(m.downTokenId);
+          if (upBook && downBook && upBook.bestAsk > 0 && downBook.bestAsk > 0) {
+            const cost = upBook.bestAsk + downBook.bestAsk;
+            const status = cost < CONFIG.MAX_SAME_POOL_COST ? '✅可套利' : '❌等待中';
+            Logger.info(`   💹 ${m.asset}: Up $${upBook.bestAsk.toFixed(3)} + Down $${downBook.bestAsk.toFixed(3)} = $${cost.toFixed(4)} ${status}`);
+          }
+        }
       }
       
       // 每10分钟发送Telegram统计
@@ -149,14 +181,16 @@ const mainLoop = async () => {
 };
 
 // 优雅退出
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   Logger.info('收到退出信号，正在关闭...');
+  await cancelAllOrders();
   closeWebSocket();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   Logger.info('收到终止信号，正在关闭...');
+  await cancelAllOrders();
   closeWebSocket();
   process.exit(0);
 });

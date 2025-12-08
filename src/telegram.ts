@@ -57,8 +57,8 @@ export const notifyBotStarted = async () => {
    • 跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启' : '❌ 关闭'}
 
 📌 <b>策略说明:</b>
-   ${CONFIG.ENABLE_CROSS_POOL ? '同池优先 + 跨池优化' : '纯同池套利 (零风险)'}
-   只交易 Up+Down < $${CONFIG.MAX_SAME_POOL_COST} 的机会
+   ${CONFIG.ENABLE_MAKER ? '📝 挂单策略 (主动创造机会)' : CONFIG.ENABLE_CROSS_POOL ? '同池优先 + 跨池优化' : '纯同池套利'}
+   ${CONFIG.ENABLE_MAKER ? `挂单金额: $${CONFIG.MAKER_ORDER_SIZE_USD} | 最大失衡: ${CONFIG.MAKER_MAX_IMBALANCE}` : `只交易 Up+Down < $${CONFIG.MAX_SAME_POOL_COST} 的机会`}
 `.trim();
 
   await sendTelegramMessage(message, true);

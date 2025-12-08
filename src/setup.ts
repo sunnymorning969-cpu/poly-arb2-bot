@@ -62,6 +62,17 @@ const setup = async () => {
   console.log('⚠️  跨池套利有方向风险，建议关闭');
   const enableCross = await question('开启跨池套利? (1=是, 0=否) [0]: ') || '0';
   
+  console.log('\n━━━ 挂单策略 (推荐) ━━━');
+  console.log('💡 挂单策略可以主动创造套利机会');
+  const enableMaker = await question('开启挂单策略? (1=是, 0=否) [1]: ') || '1';
+  
+  let makerOrderSize = '5';
+  let makerMaxImbalance = '20';
+  if (enableMaker === '1') {
+    makerOrderSize = await question('单笔挂单金额 (USD) [5]: ') || '5';
+    makerMaxImbalance = await question('最大仓位失衡 (shares) [20]: ') || '20';
+  }
+  
   // 生成配置
   const envContent = `# ========== 钱包配置 ==========
 PRIVATE_KEY=${privateKey}
@@ -91,6 +102,16 @@ ENABLE_1HR=${enable1h}
 # ========== 策略开关 ==========
 # 跨池套利有方向风险，建议关闭 (0=关闭, 1=开启)
 ENABLE_CROSS_POOL=${enableCross}
+
+# ========== 挂单策略 ==========
+# 启用挂单策略 (0=关闭, 1=开启)
+ENABLE_MAKER=${enableMaker}
+
+# 单笔挂单金额 (USD)
+MAKER_ORDER_SIZE_USD=${makerOrderSize}
+
+# 最大仓位失衡 (超过此值会强制平衡)
+MAKER_MAX_IMBALANCE=${makerMaxImbalance}
 `;
 
   // 写入文件
