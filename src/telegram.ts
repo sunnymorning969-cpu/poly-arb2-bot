@@ -134,6 +134,53 @@ ${CONFIG.SIMULATION_MODE ? '⚠️ <i>模拟模式</i>' : ''}
   await sendTelegramMessage(message, false);
 };
 
+// 发送事件结束总结（事件切换时调用）
+export const notifyEventSummary = async (summary: {
+  slug: string;
+  asset: string;
+  timeGroup: string;
+  upFilled: number;
+  upCost: number;
+  downFilled: number;
+  downCost: number;
+  avgCost: number;
+  imbalance: number;
+}) => {
+  const { slug, asset, timeGroup, upFilled, upCost, downFilled, downCost, avgCost, imbalance } = summary;
+  
+  const totalShares = upFilled + downFilled;
+  const totalCost = upCost + downCost;
+  const timeGroupName = timeGroup === '15min' ? '15分钟场' : '1小时场';
+  
+  // 如果没有任何成交，不发送通知
+  if (totalShares === 0) return;
+  
+  const balanceStatus = Math.abs(imbalance) <= 2 ? '✅ 平衡' : `⚠️ 差额${imbalance >= 0 ? '+' : ''}${imbalance}`;
+  const expectedProfit = Math.min(upFilled, downFilled) * (1 - avgCost);
+  
+  const message = `
+📋 <b>【进化版】事件周期结束</b>
+
+📊 <b>${asset} ${timeGroupName}</b>
+
+💼 <b>本周期成交:</b>
+   • Up: ${upFilled} shares ($${upCost.toFixed(2)})
+   • Down: ${downFilled} shares ($${downCost.toFixed(2)})
+   • 总成本: $${totalCost.toFixed(2)}
+   • 平均组合成本: $${avgCost.toFixed(4)}
+
+📈 <b>状态:</b>
+   • 平衡: ${balanceStatus}
+   • 预期利润: ${expectedProfit >= 0 ? '+' : ''}$${expectedProfit.toFixed(2)}
+
+⏳ 等待结算结果...
+
+${CONFIG.SIMULATION_MODE ? '⚠️ <i>模拟模式</i>' : ''}
+`.trim();
+
+  await sendTelegramMessage(message, false);
+};
+
 // 发送交易通知
 export const notifyTrade = async (
   pairInfo: string,

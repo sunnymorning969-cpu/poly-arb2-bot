@@ -4,7 +4,8 @@ import Logger from './logger';
 import { initClient } from './client';
 import { getOrderBook } from './orderbook-ws';
 import { getMarkets } from './scanner';
-import { addPosition } from './positions';
+import { addPosition, Position } from './positions';
+import { notifyEventSummary } from './telegram';
 
 // 活跃订单
 interface ActiveOrder {
@@ -271,9 +272,16 @@ export const runMakerStrategy = async (): Promise<void> => {
     const combinedCost = upPrice + downPrice;
     const profitPercent = (1 - combinedCost) * 100;
     
-    // 决定挂单数量
-    const maxShares = Math.floor(CONFIG.MAKER_ORDER_SIZE_USD / combinedCost);
-    const shares = Math.min(maxShares, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
+    // 决定挂单数量（根据市场深度动态调整）
+    // 取市场深度的 10-30%，但不超过配置的最大值
+    const upDepth = upBook.bestAskSize || 10;
+    const downDepth = downBook.bestAskSize || 10;
+    const minDepth = Math.min(upDepth, downDepth);
+    
+    // 使用深度的 20%，最少 1，最多 MAKER_MAX_SHARES_PER_ORDER
+    const depthBasedShares = Math.max(1, Math.floor(minDepth * 0.2));
+    const maxByFunds = Math.floor(CONFIG.MAKER_ORDER_SIZE_USD / combinedCost);
+    const shares = Math.min(depthBasedShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
     
     if (shares < 1) continue;
     
@@ -288,56 +296,55 @@ export const runMakerStrategy = async (): Promise<void> => {
     // 模拟模式
     if (CONFIG.SIMULATION_MODE) {
       // 基于价格关系判断成交概率
-      // 挂单价格越接近 bestAsk，成交概率越高
+      // 组合成本越低，成交概率越高（更有吸引力的价格）
+      
+      let upFilled = 0;
+      let downFilled = 0;
+      
+      // 计算成交概率：基于组合成本
+      // 组合成本 < 0.95: 80% 成交
+      // 组合成本 < 0.98: 50% 成交
+      // 组合成本 < 1.00: 30% 成交
+      // 组合成本 >= 1.00: 15% 成交
+      let baseFillChance = 0.15;
+      if (combinedCost < 0.95) {
+        baseFillChance = 0.8;
+      } else if (combinedCost < 0.98) {
+        baseFillChance = 0.5;
+      } else if (combinedCost < 1.00) {
+        baseFillChance = 0.3;
+      }
       
       // Up 挂单成交判断
-      if (shouldPlaceUp) {
-        const spreadUp = upBook.bestAsk - upBook.bestBid;
-        const pricePosition = (upPrice - upBook.bestBid) / spreadUp; // 0-1 之间
-        
-        // 价格位置在价差中间以上，有机会成交
-        // pricePosition = 1 表示价格等于 bestAsk，100% 成交
-        // pricePosition = 0.5 表示价格在中间，50% 成交
-        // pricePosition = 0 表示价格等于 bestBid，需要排队
-        let upFillChance = 0;
-        if (upPrice >= upBook.bestAsk) {
-          upFillChance = 1.0; // 吃单，100% 成交
-        } else if (pricePosition >= 0.8) {
-          upFillChance = 0.7; // 接近卖一，70% 成交
-        } else if (pricePosition >= 0.5) {
-          upFillChance = 0.3; // 价差中间，30% 成交
-        } else {
-          upFillChance = 0.1; // 接近买一，10% 成交
-        }
-        
-        if (Math.random() < upFillChance) {
-          stats.upFilled += shares;
-          stats.upCost += shares * upPrice;
-          Logger.success(`📗 [模拟] ${market.asset} Up ${shares} @ $${upPrice.toFixed(3)} 成交 (概率${(upFillChance*100).toFixed(0)}%)`);
-        }
+      if (shouldPlaceUp && Math.random() < baseFillChance) {
+        upFilled = shares;
+        stats.upFilled += shares;
+        stats.upCost += shares * upPrice;
+        Logger.success(`📗 [模拟] ${market.asset} Up ${shares} @ $${upPrice.toFixed(3)} 成交 (概率${(baseFillChance*100).toFixed(0)}%)`);
       }
       
       // Down 挂单成交判断
-      if (shouldPlaceDown) {
-        const spreadDown = downBook.bestAsk - downBook.bestBid;
-        const pricePosition = (downPrice - downBook.bestBid) / spreadDown;
-        
-        let downFillChance = 0;
-        if (downPrice >= downBook.bestAsk) {
-          downFillChance = 1.0;
-        } else if (pricePosition >= 0.8) {
-          downFillChance = 0.7;
-        } else if (pricePosition >= 0.5) {
-          downFillChance = 0.3;
-        } else {
-          downFillChance = 0.1;
-        }
-        
-        if (Math.random() < downFillChance) {
-          stats.downFilled += shares;
-          stats.downCost += shares * downPrice;
-          Logger.success(`📕 [模拟] ${market.asset} Down ${shares} @ $${downPrice.toFixed(3)} 成交 (概率${(downFillChance*100).toFixed(0)}%)`);
-        }
+      if (shouldPlaceDown && Math.random() < baseFillChance) {
+        downFilled = shares;
+        stats.downFilled += shares;
+        stats.downCost += shares * downPrice;
+        Logger.success(`📕 [模拟] ${market.asset} Down ${shares} @ $${downPrice.toFixed(3)} 成交 (概率${(baseFillChance*100).toFixed(0)}%)`);
+      }
+      
+      // 同步到 positions（供 Telegram 统计使用）
+      if (upFilled > 0 || downFilled > 0) {
+        addPosition({
+          slug: market.slug,
+          asset: market.asset,
+          timeGroup: market.timeGroup,
+          upShares: upFilled,
+          downShares: downFilled,
+          upCost: upFilled * upPrice,
+          downCost: downFilled * downPrice,
+          totalCost: upFilled * upPrice + downFilled * downPrice,
+          timestamp: Date.now(),
+          endTime: market.endTime,
+        });
       }
       
       // 显示当前状态
@@ -432,11 +439,23 @@ export const runMakerStrategy = async (): Promise<void> => {
 export const checkOrderStatus = async (): Promise<void> => {
   if (CONFIG.SIMULATION_MODE || activeOrders.size === 0) return;
   
+  const now = Date.now();
+  
   try {
     const client = await initClient();
     
     for (const [orderId, order] of activeOrders) {
       try {
+        // 检查订单对应的事件是否已过期（结束前1分钟就开始撤单）
+        const timeToEnd = order.market.endTime.getTime() - now;
+        if (timeToEnd < 60 * 1000) {
+          // 事件即将结束，撤销订单
+          await client.cancelOrder({ orderID: orderId });
+          activeOrders.delete(orderId);
+          Logger.warning(`🚫 撤销过期订单: ${order.market.asset} ${order.side.toUpperCase()} (事件即将结束)`);
+          continue;
+        }
+        
         const orderStatus = await client.getOrder(orderId);
         
         if (!orderStatus) {
@@ -482,7 +501,7 @@ export const checkOrderStatus = async (): Promise<void> => {
         }
         
         // 订单超时（超过30秒未完全成交则取消）
-        if (Date.now() - order.createdAt > 30000 && order.filled < order.size) {
+        if (now - order.createdAt > 30000 && order.filled < order.size) {
           await client.cancelOrder({ orderID: orderId });
           activeOrders.delete(orderId);
           Logger.info(`⏰ 取消超时订单: ${order.market.asset} ${order.side.toUpperCase()}`);
@@ -495,6 +514,82 @@ export const checkOrderStatus = async (): Promise<void> => {
     }
   } catch (error) {
     Logger.error(`检查订单状态失败: ${error}`);
+  }
+};
+
+/**
+ * 撤销指定事件的所有订单（事件切换时调用）
+ */
+export const cancelOrdersForSlug = async (slug: string): Promise<void> => {
+  // 获取该事件的统计（发送总结前）
+  const stats = cycleStats.get(slug);
+  
+  // 从 slug 解析资产和时间组
+  const is15min = slug.includes('15m');
+  const isBtc = slug.includes('btc') || slug.includes('bitcoin');
+  const asset = isBtc ? 'BTC' : 'ETH';
+  const timeGroup = is15min ? '15min' : '1hr';
+  
+  // 发送事件总结（如果有成交）
+  if (stats && (stats.upFilled > 0 || stats.downFilled > 0)) {
+    const avgCost = stats.upFilled > 0 && stats.downFilled > 0
+      ? (stats.upCost / stats.upFilled + stats.downCost / stats.downFilled)
+      : 0;
+    
+    await notifyEventSummary({
+      slug,
+      asset,
+      timeGroup,
+      upFilled: stats.upFilled,
+      upCost: stats.upCost,
+      downFilled: stats.downFilled,
+      downCost: stats.downCost,
+      avgCost,
+      imbalance: stats.upFilled - stats.downFilled,
+    });
+    
+    Logger.info(`📋 ${asset} ${timeGroup} 周期结束: Up ${stats.upFilled} / Down ${stats.downFilled} | 成本 $${(stats.upCost + stats.downCost).toFixed(2)}`);
+  }
+  
+  if (CONFIG.SIMULATION_MODE) {
+    // 模拟模式：清除该事件的统计
+    cycleStats.delete(slug);
+    return;
+  }
+  
+  const ordersToCancel: string[] = [];
+  
+  for (const [orderId, order] of activeOrders) {
+    if (order.market.slug === slug) {
+      ordersToCancel.push(orderId);
+    }
+  }
+  
+  if (ordersToCancel.length === 0) {
+    cycleStats.delete(slug);
+    return;
+  }
+  
+  try {
+    const client = await initClient();
+    
+    for (const orderId of ordersToCancel) {
+      try {
+        await client.cancelOrder({ orderID: orderId });
+        activeOrders.delete(orderId);
+      } catch (error) {
+        // 忽略取消错误
+        activeOrders.delete(orderId);
+      }
+    }
+    
+    Logger.info(`🚫 已撤销 ${ordersToCancel.length} 个 ${slug} 的挂单`);
+    
+    // 清除该事件的统计
+    cycleStats.delete(slug);
+    
+  } catch (error) {
+    Logger.error(`撤销订单失败: ${error}`);
   }
 };
 

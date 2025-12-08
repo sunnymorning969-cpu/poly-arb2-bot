@@ -214,9 +214,17 @@ export const refreshMarkets = async (): Promise<MarketInfo[]> => {
     return cachedMarkets;
   }
   
-  // slug 变化了
+  // slug 变化了，需要撤销旧事件的挂单
   if (slugsChanged && lastSlugs.length > 0) {
-    Logger.info(`🔄 检测到事件切换，更新市场订阅...`);
+    Logger.info(`🔄 检测到事件切换，撤销旧事件挂单并更新市场订阅...`);
+    
+    // 找出被替换的旧 slug，撤销其挂单
+    const { cancelOrdersForSlug } = await import('./maker');
+    for (const oldSlug of lastSlugs) {
+      if (!currentSlugs.includes(oldSlug)) {
+        await cancelOrdersForSlug(oldSlug);
+      }
+    }
   }
   
   Logger.info(`📡 获取市场: ${currentSlugs.join(', ')}`);

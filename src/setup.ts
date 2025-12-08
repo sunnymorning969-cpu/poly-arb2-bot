@@ -49,7 +49,7 @@ const setup = async () => {
   // 挂单策略参数
   console.log('\n━━━ 挂单策略参数 ━━━');
   const maxCost = await question(`最大成本阈值 (Up+Down < 此值才挂单) [0.995]: `) || '0.995';
-  const makerOrderSize = await question('单笔挂单金额 (USD) [5]: ') || '5';
+  const makerOrderSize = await question('单笔挂单上限 (USD，实际按深度20%动态调整) [10]: ') || '10';
   const makerMaxImbalance = await question('最大仓位失衡 (超过则补单) [20]: ') || '20';
   
   // 生成配置
@@ -81,7 +81,7 @@ ENABLE_MAKER=1
 ENABLE_CROSS_POOL=0
 
 # ========== 挂单参数 ==========
-# 单笔挂单金额 (USD)
+# 单笔挂单上限 (USD) - 实际按市场深度20%动态调整
 MAKER_ORDER_SIZE_USD=${makerOrderSize}
 # 最大仓位失衡 (超过此值会强制平衡)
 MAKER_MAX_IMBALANCE=${makerMaxImbalance}
