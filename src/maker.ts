@@ -111,16 +111,20 @@ const makeTradeDecision = (
   
   const needMoreDown = imbalance > 0;  // Up 多，需要 Down
   const needMoreUp = imbalance < 0;    // Down 多，需要 Up
+  const isBalanced = Math.abs(imbalance) <= 2;  // 允许±2的误差
   
-  // ========== 优先级1：有失衡，Taker 配对 ==========
+  // ========== 优先级1：有失衡，只做 Taker 配对 ==========
   if (needMoreDown && upAvgCost > 0) {
     const maxDownPrice = CONFIG.MAX_COMBINED_COST - upAvgCost;
     if (downBestAsk <= maxDownPrice) {
       downAction = 'taker';
       downPrice = downBestAsk;
-      reason = `🔗 Taker配对 Down$${downBestAsk.toFixed(2)} (组合$${(upAvgCost + downBestAsk).toFixed(2)})`;
+      reason = `🔗 配对Down$${downBestAsk.toFixed(2)} (组合$${(upAvgCost + downBestAsk).toFixed(2)})`;
       return { upAction, downAction, upPrice, downPrice, reason };
     }
+    // 无法配对，等待更好价格
+    reason = `⏳ 需Down配对，当前$${downBestAsk.toFixed(2)}>${maxDownPrice.toFixed(2)}`;
+    return { upAction, downAction, upPrice, downPrice, reason };
   }
   
   if (needMoreUp && downAvgCost > 0) {
@@ -128,12 +132,21 @@ const makeTradeDecision = (
     if (upBestAsk <= maxUpPrice) {
       upAction = 'taker';
       upPrice = upBestAsk;
-      reason = `🔗 Taker配对 Up$${upBestAsk.toFixed(2)} (组合$${(downAvgCost + upBestAsk).toFixed(2)})`;
+      reason = `🔗 配对Up$${upBestAsk.toFixed(2)} (组合$${(downAvgCost + upBestAsk).toFixed(2)})`;
       return { upAction, downAction, upPrice, downPrice, reason };
     }
+    // 无法配对，等待更好价格
+    reason = `⏳ 需Up配对，当前$${upBestAsk.toFixed(2)}>${maxUpPrice.toFixed(2)}`;
+    return { upAction, downAction, upPrice, downPrice, reason };
   }
   
-  // ========== 优先级2：双边挂 Maker 单（核心！91%的交易）==========
+  // ========== 优先级2：仓位平衡时，做双边 Maker ==========
+  if (!isBalanced) {
+    // 有失衡但无法配对（没有平均成本），跳过
+    reason = `⏳ 失衡${imbalance}，等待`;
+    return { upAction, downAction, upPrice, downPrice, reason };
+  }
+  
   const potentialUpPrice = Math.round((upBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
   const potentialDownPrice = Math.round((downBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
   const combinedMakerCost = potentialUpPrice + potentialDownPrice;
@@ -147,13 +160,13 @@ const makeTradeDecision = (
       downAction = 'maker';
       upPrice = potentialUpPrice;
       downPrice = potentialDownPrice;
-      reason = `📝 双边Maker Up$${upPrice.toFixed(2)}+Down$${downPrice.toFixed(2)}=$${combinedMakerCost.toFixed(2)}`;
+      reason = `📝 Maker Up$${upPrice.toFixed(2)}+Down$${downPrice.toFixed(2)}=$${combinedMakerCost.toFixed(2)}`;
       return { upAction, downAction, upPrice, downPrice, reason };
     }
   }
   
   // ========== 优先级3：等待 ==========
-  reason = `⏳ 组合$${combinedMakerCost.toFixed(2)}>${CONFIG.MAX_COMBINED_COST}，等待`;
+  reason = `⏳ 组合$${combinedMakerCost.toFixed(2)}>${CONFIG.MAX_COMBINED_COST}`;
   return { upAction, downAction, upPrice, downPrice, reason };
 };
 
@@ -451,17 +464,15 @@ export const runMakerStrategy = async (): Promise<void> => {
           timestamp: Date.now(),
           endTime: market.endTime,
         });
-      }
-      
-      // 显示当前状态
-      if (stats.upFilled > 0 || stats.downFilled > 0) {
+        
+        // 只在成交时显示仓位状态
         const avgCost = stats.upFilled > 0 && stats.downFilled > 0
           ? (stats.upCost / stats.upFilled + stats.downCost / stats.downFilled)
           : 0;
-        const imbalance = stats.upFilled - stats.downFilled;
+        const currentImbalance = stats.upFilled - stats.downFilled;
         const paired = Math.min(stats.upFilled, stats.downFilled);
         const expectedProfit = paired > 0 ? paired * (1 - avgCost) : 0;
-        Logger.info(`   📊 仓位: Up ${stats.upFilled} / Down ${stats.downFilled} (差额${imbalance >= 0 ? '+' : ''}${imbalance}) | 平均成本: $${avgCost.toFixed(4)} | 预期利润: $${expectedProfit.toFixed(2)}`);
+        Logger.info(`   📊 仓位: Up ${stats.upFilled} / Down ${stats.downFilled} (差额${currentImbalance >= 0 ? '+' : ''}${currentImbalance}) | 成本$${avgCost.toFixed(2)} | 利润$${expectedProfit.toFixed(2)}`);
       }
       
       continue;
