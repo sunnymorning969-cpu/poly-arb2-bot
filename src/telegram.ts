@@ -79,10 +79,23 @@ export const notifySettlement = async (
   const profitPercent = position.totalCost > 0 ? (profit / position.totalCost) * 100 : 0;
   const timeGroupName = position.timeGroup === '15min' ? '15分钟场' : '1小时场';
   
+  // 检测仓位平衡状态
+  const imbalance = position.upShares - position.downShares;
+  const isBalanced = Math.abs(imbalance) <= 2;
+  const isSingleSide = position.upShares === 0 || position.downShares === 0;
+  
+  // 仓位状态标记
+  let balanceTag = '';
+  if (isSingleSide) {
+    balanceTag = '\n⚠️ <b>单边仓位（异常）</b>';
+  } else if (!isBalanced) {
+    balanceTag = `\n⚠️ <b>仓位失衡 (${imbalance >= 0 ? '+' : ''}${imbalance.toFixed(0)})</b>`;
+  }
+  
   const message = `
-${profitEmoji} <b>【进化版】${timeGroupName} 第${stats.totalSettled}次结算</b>
+${profitEmoji} <b>【混合策略】${timeGroupName} 第${stats.totalSettled}次结算</b>
 
-📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>
+📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>${balanceTag}
 
 💰 <b>本次仓位:</b>
    • Up: ${position.upShares.toFixed(0)} shares ($${position.upCost.toFixed(2)})
@@ -116,7 +129,7 @@ export const notifyRunningStats = async (stats: {
   const profitEmoji = stats.totalProfit >= 0 ? '📈' : '📉';
   
   const message = `
-📊 <b>【进化版】运行统计</b>
+📊 <b>【混合策略】运行统计</b>
 
 ⏱️ 运行时间: ${stats.runtime}
 
@@ -145,7 +158,7 @@ export const notifyEventSummary = async (summary: {
   upCost: number;
   downFilled: number;
   downCost: number;
-  avgCost: number;
+  avgCost: number;  // -1 表示单边成交，无法计算
   imbalance: number;
 }) => {
   const { slug, asset, timeGroup, upFilled, upCost, downFilled, downCost, avgCost, imbalance } = summary;
@@ -157,11 +170,21 @@ export const notifyEventSummary = async (summary: {
   // 如果没有任何成交，不发送通知
   if (totalShares === 0) return;
   
-  const balanceStatus = Math.abs(imbalance) <= 2 ? '✅ 平衡' : `⚠️ 差额${imbalance >= 0 ? '+' : ''}${imbalance}`;
-  const expectedProfit = Math.min(upFilled, downFilled) * (1 - avgCost);
+  const balanceStatus = Math.abs(imbalance) <= 2 ? '✅ 平衡' : `⚠️ 失衡 ${imbalance >= 0 ? '+' : ''}${imbalance}`;
+  
+  // 计算配对数量和预期利润
+  const pairedShares = Math.min(upFilled, downFilled);
+  const hasValidAvgCost = avgCost > 0;  // avgCost = -1 表示无效
+  const expectedProfit = hasValidAvgCost ? pairedShares * (1 - avgCost) : 0;
+  
+  // 平均成本显示
+  const avgCostDisplay = hasValidAvgCost ? `$${avgCost.toFixed(4)}` : '⚠️ 单边成交';
+  const profitDisplay = hasValidAvgCost 
+    ? `${expectedProfit >= 0 ? '+' : ''}$${expectedProfit.toFixed(2)}`
+    : '⚠️ 需结算确认';
   
   const message = `
-📋 <b>【进化版】事件周期结束</b>
+📋 <b>【混合策略】事件周期结束</b>
 
 📊 <b>${asset} ${timeGroupName}</b>
 
@@ -169,11 +192,11 @@ export const notifyEventSummary = async (summary: {
    • Up: ${upFilled} shares ($${upCost.toFixed(2)})
    • Down: ${downFilled} shares ($${downCost.toFixed(2)})
    • 总成本: $${totalCost.toFixed(2)}
-   • 平均组合成本: $${avgCost.toFixed(4)}
+   • 平均组合成本: ${avgCostDisplay}
 
 📈 <b>状态:</b>
-   • 平衡: ${balanceStatus}
-   • 预期利润: ${expectedProfit >= 0 ? '+' : ''}$${expectedProfit.toFixed(2)}
+   • 配对: ${pairedShares} 对 | ${balanceStatus}
+   • 预期利润: ${profitDisplay}
 
 ⏳ 等待结算结果...
 
@@ -198,7 +221,7 @@ export const notifyTrade = async (
   const typeTag = type === 'same_pool' ? '📊 同池套利' : '🔀 跨池套利';
   
   const message = `
-💰 <b>【进化版】${typeTag}成交</b>
+💰 <b>【混合策略】${typeTag}成交</b>
 
 📊 <b>${timeGroup === '15min' ? '15分钟' : '1小时'}场 - ${pairInfo}</b>
 

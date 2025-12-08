@@ -427,70 +427,89 @@ export const runMakerStrategy = async (): Promise<void> => {
       let upCost = 0;
       let downCost = 0;
       
-      // 执行 Up 交易
-      if (decision.upAction !== 'skip') {
-        // 检查仓位是否需要 Up
-        const shouldTradeUp = needMoreUp || diff === 0 || decision.upAction === 'taker';
+      // 关键修复：双边挂单必须同时成交，避免单边失衡
+      const isBothMaker = decision.upAction === 'maker' && decision.downAction === 'maker';
+      
+      if (isBothMaker) {
+        // 双边挂单：使用同一个随机数，要么都成交，要么都不成交
+        const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
         
-        if (shouldTradeUp) {
-          if (decision.upAction === 'taker') {
-            // 吃单：100% 成交
+        // 计算平均成交概率
+        const upSpread = upBook.bestAsk - upBook.bestBid;
+        const upGap = upBook.bestAsk - decision.upPrice;
+        const upChance = upSpread > 0 ? 0.08 + Math.max(0, (1 - upGap / upSpread) * 0.12) : 0.08;
+        
+        const downSpread = downBook.bestAsk - downBook.bestBid;
+        const downGap = downBook.bestAsk - decision.downPrice;
+        const downChance = downSpread > 0 ? 0.08 + Math.max(0, (1 - downGap / downSpread) * 0.12) : 0.08;
+        
+        // 取两边较低的概率，确保双边同时成交
+        const fillChance = Math.min(upChance, downChance);
+        
+        if (Math.random() < fillChance) {
+          // 双边同时成交
+          upFilled = shares;
+          downFilled = shares;
+          upCost = shares * decision.upPrice;
+          downCost = shares * decision.downPrice;
+          stats.upFilled += shares;
+          stats.downFilled += shares;
+          stats.upCost += upCost;
+          stats.downCost += downCost;
+          Logger.success(`📗 [模拟] 挂单成交 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)} (${(fillChance*100).toFixed(0)}%)`);
+          Logger.success(`📕 [模拟] 挂单成交 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)} (${(fillChance*100).toFixed(0)}%)`);
+        }
+      } else {
+        // 非双边挂单：吃单可以单独执行（因为吃单是100%成交）
+        
+        // 执行 Up 交易
+        if (decision.upAction === 'taker') {
+          const shouldTradeUp = needMoreUp || diff === 0;
+          if (shouldTradeUp) {
             const shares = Math.min(takerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
             upFilled = shares;
             upCost = shares * decision.upPrice;
             stats.upFilled += shares;
             stats.upCost += upCost;
             Logger.success(`📗 [模拟] 吃单 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
-          } else {
-            // 挂单：根据价格距离计算成交概率
-            const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            const spread = upBook.bestAsk - upBook.bestBid;
-            const priceGap = upBook.bestAsk - decision.upPrice;
-            // 挂单成交概率：8% 基础 + 最多 12%（越接近 bestAsk 越高）
-            const fillChance = spread > 0 ? 0.08 + Math.max(0, (1 - priceGap / spread) * 0.12) : 0.08;
-            
-            if (Math.random() < fillChance) {
-              upFilled = shares;
-              upCost = shares * decision.upPrice;
-              stats.upFilled += shares;
-              stats.upCost += upCost;
-              Logger.success(`📗 [模拟] 挂单成交 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)} (${(fillChance*100).toFixed(0)}%)`);
-            }
           }
         }
-      }
-      
-      // 执行 Down 交易
-      if (decision.downAction !== 'skip') {
-        const shouldTradeDown = needMoreDown || diff === 0 || decision.downAction === 'taker';
         
-        if (shouldTradeDown) {
-          if (decision.downAction === 'taker') {
+        // 执行 Down 交易
+        if (decision.downAction === 'taker') {
+          const shouldTradeDown = needMoreDown || diff === 0;
+          if (shouldTradeDown) {
             const shares = Math.min(takerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
             downFilled = shares;
             downCost = shares * decision.downPrice;
             stats.downFilled += shares;
             stats.downCost += downCost;
             Logger.success(`📕 [模拟] 吃单 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)}`);
-          } else {
-            const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            const spread = downBook.bestAsk - downBook.bestBid;
-            const priceGap = downBook.bestAsk - decision.downPrice;
-            const fillChance = spread > 0 ? 0.08 + Math.max(0, (1 - priceGap / spread) * 0.12) : 0.08;
-            
-            if (Math.random() < fillChance) {
-              downFilled = shares;
-              downCost = shares * decision.downPrice;
-              stats.downFilled += shares;
-              stats.downCost += downCost;
-              Logger.success(`📕 [模拟] 挂单成交 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)} (${(fillChance*100).toFixed(0)}%)`);
-            }
           }
+        }
+        
+        // 混合模式（一边吃单一边挂单）：挂单方也100%成交（因为吃单已确定）
+        if (decision.upAction === 'taker' && decision.downAction === 'maker' && upFilled > 0) {
+          const shares = upFilled; // 与吃单同样数量
+          downFilled = shares;
+          downCost = shares * decision.downPrice;
+          stats.downFilled += shares;
+          stats.downCost += downCost;
+          Logger.success(`📕 [模拟] 配对挂单 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)}`);
+        }
+        
+        if (decision.downAction === 'taker' && decision.upAction === 'maker' && downFilled > 0) {
+          const shares = downFilled;
+          upFilled = shares;
+          upCost = shares * decision.upPrice;
+          stats.upFilled += shares;
+          stats.upCost += upCost;
+          Logger.success(`📗 [模拟] 配对挂单 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
         }
       }
       
-      // 同步到 positions
-      if (upFilled > 0 || downFilled > 0) {
+      // 同步到 positions（只有双边都成交才记录）
+      if (upFilled > 0 && downFilled > 0) {
         addPosition({
           slug: market.slug,
           asset: market.asset,
@@ -718,9 +737,10 @@ export const cancelOrdersForSlug = async (slug: string): Promise<void> => {
   
   // 发送事件总结（如果有成交）
   if (stats && (stats.upFilled > 0 || stats.downFilled > 0)) {
-    const avgCost = stats.upFilled > 0 && stats.downFilled > 0
-      ? (stats.upCost / stats.upFilled + stats.downCost / stats.downFilled)
-      : 0;
+    // 计算平均组合成本（只有两边都有成交才有意义）
+    const upAvg = stats.upFilled > 0 ? stats.upCost / stats.upFilled : 0;
+    const downAvg = stats.downFilled > 0 ? stats.downCost / stats.downFilled : 0;
+    const avgCost = stats.upFilled > 0 && stats.downFilled > 0 ? upAvg + downAvg : -1; // -1 表示无效
     
     await notifyEventSummary({
       slug,

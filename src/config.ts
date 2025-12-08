@@ -23,20 +23,20 @@ export const CONFIG = {
   // ========== 混合策略核心参数（基于数据分析） ==========
   // 数据来源：15000笔交易，6个事件，100%胜率，平均成本$0.9894
   
-  // 目标组合成本阈值（数据显示66.7%事件成本在$0.95-$0.98）
-  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.98'),
+  // 目标组合成本阈值（$1.00 = 不亏不赚，<$1.00 = 有利润）
+  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '1.00'),
   
-  // 吃单阈值：低于此价格直接吃单（0.48 + 0.50 = 0.98，有利润空间）
-  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.48'),
+  // 吃单阈值：低于此价格视为便宜，优先吃单
+  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.50'),
   
-  // ========== 价格范围（基于数据分析） ==========
-  // Up 交易 74% 在 $0.50-$0.90
-  UP_PRICE_MIN: 0.45,  // Up 挂单最低价格
-  UP_PRICE_MAX: 0.85,  // Up 挂单最高价格（放宽以捕捉更多机会）
+  // ========== 价格范围（基于实际市场观察调整） ==========
+  // Up 价格通常在 $0.10-$0.60（当 Down 贵时 Up 便宜）
+  UP_PRICE_MIN: 0.10,  // Up 挂单最低价格
+  UP_PRICE_MAX: 0.65,  // Up 挂单最高价格
   
-  // Down 交易 58% 在 $0.20-$0.50
-  DOWN_PRICE_MIN: 0.15,  // Down 挂单最低价格（放宽）
-  DOWN_PRICE_MAX: 0.55,  // Down 挂单最高价格（放宽）
+  // Down 价格通常在 $0.40-$0.90（当 Up 便宜时 Down 贵）
+  DOWN_PRICE_MIN: 0.35,  // Down 挂单最低价格
+  DOWN_PRICE_MAX: 0.70,  // Down 挂单最高价格（放宽以适应实际市场）
   
   // ========== 挂单参数 ==========
   // 挂单间隔 (毫秒)
