@@ -13,42 +13,43 @@ export const CONFIG = {
   // ========== 模式 ==========
   SIMULATION_MODE: process.env.SIMULATION_MODE !== 'false',
   
-  // ========== 同池套利核心参数 ==========
-  // 最大同池成本阈值 (Up + Down 必须小于此值才交易)
-  MAX_SAME_POOL_COST: parseFloat(process.env.MAX_SAME_POOL_COST || '0.995'),
-  
-  // 单笔订单最大金额 (USD)
-  MAX_ORDER_SIZE_USD: parseFloat(process.env.MAX_ORDER_SIZE_USD || '10'),
-  
-  // 交易冷却时间 (毫秒)
-  TRADE_COOLDOWN_MS: parseInt(process.env.TRADE_COOLDOWN_MS || '2000'),
-  
-  // 扫描间隔 (毫秒)
-  SCAN_INTERVAL_MS: 100,
-  
   // ========== 市场开关 ==========
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
-  ENABLE_1HR: process.env.ENABLE_1HR !== '0',
+  ENABLE_1HR: process.env.ENABLE_1HR === '1',  // 默认关闭1小时
   
-  // ========== 跨池套利开关 ==========
-  // 跨池套利有方向风险，建议关闭
-  ENABLE_CROSS_POOL: process.env.ENABLE_CROSS_POOL === '1',
+  // ========== 混合策略核心参数（基于数据分析） ==========
+  // 数据来源：15000笔交易，6个事件，100%胜率，平均成本$0.9894
   
-  // ========== 挂单策略 ==========
-  // 启用挂单策略（主动创造套利机会）
-  ENABLE_MAKER: process.env.ENABLE_MAKER === '1',
+  // 目标组合成本阈值（数据显示66.7%事件成本在$0.95-$0.98）
+  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.98'),
   
+  // 吃单阈值：低于此价格直接吃单（0.48 + 0.50 = 0.98，有利润空间）
+  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.48'),
+  
+  // ========== 价格范围（基于数据分析） ==========
+  // Up 交易 74% 在 $0.50-$0.90，主要集中在 $0.50-$0.75
+  UP_PRICE_MIN: 0.50,  // Up 挂单最低价格
+  UP_PRICE_MAX: 0.75,  // Up 挂单最高价格（超过此价格另一边难以对冲）
+  
+  // Down 交易 58% 在 $0.20-$0.50，主要集中在 $0.25-$0.50
+  DOWN_PRICE_MIN: 0.25,  // Down 挂单最低价格
+  DOWN_PRICE_MAX: 0.50,  // Down 挂单最高价格
+  
+  // ========== 挂单参数 ==========
   // 挂单间隔 (毫秒)
-  MAKER_INTERVAL_MS: parseInt(process.env.MAKER_INTERVAL_MS || '5000'),
+  MAKER_INTERVAL_MS: parseInt(process.env.MAKER_INTERVAL_MS || '3000'),
   
   // 单笔挂单金额 (USD)
-  MAKER_ORDER_SIZE_USD: parseFloat(process.env.MAKER_ORDER_SIZE_USD || '5'),
+  MAKER_ORDER_SIZE_USD: parseFloat(process.env.MAKER_ORDER_SIZE_USD || '10'),
   
   // 单笔挂单最大 shares
-  MAKER_MAX_SHARES_PER_ORDER: parseInt(process.env.MAKER_MAX_SHARES_PER_ORDER || '10'),
+  MAKER_MAX_SHARES_PER_ORDER: parseInt(process.env.MAKER_MAX_SHARES_PER_ORDER || '20'),
   
   // 最大仓位失衡 (超过此值会强制平衡)
-  MAKER_MAX_IMBALANCE: parseInt(process.env.MAKER_MAX_IMBALANCE || '20'),
+  MAKER_MAX_IMBALANCE: parseInt(process.env.MAKER_MAX_IMBALANCE || '30'),
+  
+  // 挂单偏移量（在 bestBid 上方多少挂单）
+  MAKER_OFFSET: 0.01,
   
   // ========== API ==========
   POLYMARKET_API: 'https://gamma-api.polymarket.com',

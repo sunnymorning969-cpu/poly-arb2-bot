@@ -16,7 +16,8 @@ const question = (prompt: string): Promise<string> => {
 const setup = async () => {
   console.log('\n');
   console.log('═'.repeat(60));
-  console.log('  🎯 挂单套利机器人 - 配置向导');
+  console.log('  🎯 混合套利机器人 - 配置向导');
+  console.log('  📊 策略参数基于 15000 笔交易数据分析');
   console.log('═'.repeat(60));
   console.log('\n');
   
@@ -34,7 +35,7 @@ const setup = async () => {
     });
   }
   
-  console.log('📋 请配置以下参数 (直接回车使用默认值)\n');
+  console.log('📋 请配置以下参数 (直接回车使用推荐值)\n');
   
   // 钱包配置
   console.log('━━━ 钱包配置 ━━━');
@@ -46,14 +47,28 @@ const setup = async () => {
   const simMode = await question('模拟模式? (1=模拟, 0=实盘) [1]: ') || '1';
   const simulationMode = simMode !== '0';
   
-  // 挂单策略参数
-  console.log('\n━━━ 挂单策略参数 ━━━');
-  const maxCost = await question(`最大成本阈值 (Up+Down < 此值才挂单) [0.995]: `) || '0.995';
-  const makerOrderSize = await question('单笔挂单上限 (USD，实际按深度20%动态调整) [10]: ') || '10';
-  const makerMaxImbalance = await question('最大仓位失衡 (超过则补单) [20]: ') || '20';
+  // 策略参数（基于数据分析的推荐值）
+  console.log('\n━━━ 策略参数 (基于数据分析) ━━━');
+  console.log('   数据来源: 15000笔交易, 100%胜率, 平均成本$0.9894');
+  console.log('');
+  
+  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [0.98]: ') || '0.98';
+  const takerThreshold = await question('吃单阈值 (低于此价格直接吃单) [0.48]: ') || '0.48';
+  const makerOrderSize = await question('单笔交易金额 (USD) [10]: ') || '10';
+  const makerMaxImbalance = await question('最大仓位失衡 (超过则强制平衡) [30]: ') || '30';
+  
+  // 市场选择
+  console.log('\n━━━ 市场选择 ━━━');
+  const enable15min = await question('启用 15 分钟场? (1=是, 0=否) [1]: ') || '1';
+  const enable1hr = await question('启用 1 小时场? (1=是, 0=否) [0]: ') || '0';
   
   // 生成配置
-  const envContent = `# ========== 钱包配置 ==========
+  const envContent = `# ═══════════════════════════════════════════════════════════
+# 混合套利机器人配置
+# 策略参数基于 15000 笔交易数据分析（100%胜率）
+# ═══════════════════════════════════════════════════════════
+
+# ========== 钱包配置 ==========
 PRIVATE_KEY=${privateKey}
 PROXY_WALLET=${proxyWallet}
 
@@ -64,33 +79,29 @@ TELEGRAM_GROUP_ID=${existingEnv.TELEGRAM_GROUP_ID || '@rickyhutest'}
 # ========== 运行模式 ==========
 SIMULATION_MODE=${simulationMode}
 
-# ========== 核心参数 ==========
-# 最大成本阈值 (Up+Down 必须小于此值)
-MAX_SAME_POOL_COST=${maxCost}
+# ========== 核心策略参数（基于数据分析） ==========
+# 目标组合成本（数据显示66.7%事件成本在$0.95-$0.98）
+MAX_COMBINED_COST=${maxCombinedCost}
+
+# 吃单阈值：低于此价格直接吃单（0.48 + 0.50 = 0.98）
+TAKER_THRESHOLD=${takerThreshold}
 
 # ========== 市场开关 ==========
-# 15分钟场 (推荐)
-ENABLE_15MIN=1
-# 1小时场 (可选)
-ENABLE_1HR=0
+ENABLE_15MIN=${enable15min === '1' ? '1' : '0'}
+ENABLE_1HR=${enable1hr === '1' ? '1' : '0'}
 
-# ========== 策略开关 ==========
-# 挂单策略 (推荐开启)
-ENABLE_MAKER=1
-# 跨池套利 (有风险，默认关闭)
-ENABLE_CROSS_POOL=0
-
-# ========== 挂单参数 ==========
-# 单笔挂单上限 (USD) - 实际按市场深度20%动态调整
+# ========== 交易参数 ==========
+# 单笔交易金额 (USD)
 MAKER_ORDER_SIZE_USD=${makerOrderSize}
+
 # 最大仓位失衡 (超过此值会强制平衡)
 MAKER_MAX_IMBALANCE=${makerMaxImbalance}
-# 挂单间隔 (毫秒)
-MAKER_INTERVAL_MS=5000
 
-# ========== 吃单参数 (备用) ==========
-MAX_ORDER_SIZE_USD=10
-TRADE_COOLDOWN_MS=2000
+# 扫描间隔 (毫秒) - 建议 3000ms
+MAKER_INTERVAL_MS=3000
+
+# 单笔最大 shares
+MAKER_MAX_SHARES_PER_ORDER=20
 `;
 
   // 写入文件
@@ -102,9 +113,15 @@ TRADE_COOLDOWN_MS=2000
   console.log('═'.repeat(60));
   console.log('\n📝 配置摘要:');
   console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
-  console.log(`   成本阈值: $${maxCost}`);
-  console.log(`   挂单金额: $${makerOrderSize}`);
+  console.log(`   目标组合成本: ≤ $${maxCombinedCost}`);
+  console.log(`   吃单阈值: < $${takerThreshold}`);
+  console.log(`   单笔金额: $${makerOrderSize}`);
   console.log(`   最大失衡: ${makerMaxImbalance} shares`);
+  console.log(`   市场: ${enable15min === '1' ? '15分钟' : ''}${enable15min === '1' && enable1hr === '1' ? ' + ' : ''}${enable1hr === '1' ? '1小时' : ''}`);
+  console.log('\n📊 策略说明:');
+  console.log('   • 价格 < $0.48 → 直接吃单（抢便宜货）');
+  console.log('   • Up $0.50-$0.75 / Down $0.25-$0.50 → 挂单等待');
+  console.log('   • 自动平衡 Up/Down 仓位');
   console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();
