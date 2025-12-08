@@ -1,0 +1,28 @@
+{
+  "name": "poly-arb2-same-pool",
+  "version": "1.0.0",
+  "description": "Polymarket 套利机器人 - 同池优先 + 跨池优化",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "setup": "ts-node src/setup.ts",
+    "approve": "ts-node src/approve.ts"
+  },
+  "dependencies": {
+    "@polymarket/clob-client": "^4.4.0",
+    "@polymarket/order-utils": "^2.0.0",
+    "axios": "^1.6.0",
+    "chalk": "^4.1.2",
+    "dotenv": "^16.3.1",
+    "ethers": "^5.7.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "@types/ws": "^8.5.8",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}
