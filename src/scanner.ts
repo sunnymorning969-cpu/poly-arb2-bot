@@ -281,8 +281,10 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
     const marketData: Array<{
       market: MarketInfo;
       upAsk: number;
+      upBid: number;
       upDepth: number;
       downAsk: number;
+      downBid: number;
       downDepth: number;
     }> = [];
     
@@ -294,6 +296,8 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
       
       const upAsk = upBook.bestAsk;
       const downAsk = downBook.bestAsk;
+      const upBid = upBook.bestBid;
+      const downBid = downBook.bestBid;
       
       if (upAsk <= 0 || upAsk >= 1 || downAsk <= 0 || downAsk >= 1) continue;
       if (upBook.bestAskSize < 1 || downBook.bestAskSize < 1) continue;
@@ -301,8 +305,10 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
       marketData.push({
         market,
         upAsk,
+        upBid,
         upDepth: upBook.bestAskSize,
         downAsk,
+        downBid,
         downDepth: downBook.bestAskSize,
       });
     }

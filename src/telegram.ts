@@ -63,7 +63,7 @@ export const notifyBotStarted = async () => {
   await sendTelegramMessage(message, true);
 };
 
-// 发送结算通知
+// 发送结算通知（标记第几次结算）
 export const notifySettlement = async (
   result: SettlementResult,
   stats: { totalSettled: number; totalProfit: number; winCount: number; lossCount: number; winRate: number }
@@ -74,24 +74,21 @@ export const notifySettlement = async (
   const outcomeEmoji = outcome === 'up' ? '⬆️' : '⬇️';
   const profitSign = profit >= 0 ? '+' : '';
   const profitPercent = position.totalCost > 0 ? (profit / position.totalCost) * 100 : 0;
+  const timeGroupName = position.timeGroup === '15min' ? '15分钟场' : '1小时场';
   
   const message = `
-${profitEmoji} <b>【进化版】${position.asset} ${position.timeGroup === '15min' ? '15分钟' : '1小时'}场 结算</b>
+${profitEmoji} <b>【进化版】${timeGroupName} 第${stats.totalSettled}次结算</b>
 
-📊 <b>结果:</b> ${outcomeEmoji} ${outcome.toUpperCase()} 获胜
+📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>
 
-💰 <b>仓位:</b>
+💰 <b>本次仓位:</b>
    • Up: ${position.upShares.toFixed(0)} shares ($${position.upCost.toFixed(2)})
    • Down: ${position.downShares.toFixed(0)} shares ($${position.downCost.toFixed(2)})
-   • 总成本: $${position.totalCost.toFixed(2)}
-
-📈 <b>盈亏:</b>
-   • 收回: $${payout.toFixed(2)}
+   • 成本: $${position.totalCost.toFixed(2)} → 收回: $${payout.toFixed(2)}
    • 盈亏: <b>${profitSign}$${profit.toFixed(2)}</b> (${profitSign}${profitPercent.toFixed(1)}%)
 
 ━━━━━━━━━━━━━━━
 📊 <b>累计统计:</b>
-   • 已结算: ${stats.totalSettled} 个
    • 胜率: ${stats.winRate.toFixed(1)}% (${stats.winCount}胜/${stats.lossCount}负)
    • 累计盈亏: ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}
 

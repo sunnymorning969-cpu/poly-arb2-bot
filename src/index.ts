@@ -4,7 +4,7 @@ import { initClient, getBalance, getWalletAddress } from './client';
 import { scanArbitrageOpportunities, refreshMarkets, getActiveBookCount } from './scanner';
 import { executeArbitrage } from './executor';
 import { getPositionCount, getTotalCost, getExpectedProfit, getStats, checkAndSettleExpired, getPositionSummary } from './positions';
-import { notifyBotStarted, notifySettlement, notifyRunningStats, notifyTrade } from './telegram';
+import { notifyBotStarted, notifySettlement, notifyRunningStats } from './telegram';
 import { closeWebSocket } from './orderbook-ws';
 
 const startTime = Date.now();
@@ -86,29 +86,13 @@ const mainLoop = async () => {
           ? upMarket.asset 
           : `${upMarket.asset}↑${downMarket.asset}↓`;
         
-        // 显示机会
-        Logger.success(`🎯 ${timeGroup} ${typeTag} ${pairInfo}: Up $${upAskPrice.toFixed(3)} + Down $${downAskPrice.toFixed(3)} = $${combinedCost.toFixed(4)} (${profitPercent.toFixed(2)}%)`);
-        
         // 执行交易
         const result = await executeArbitrage(opp);
         
         if (result.success && result.upFilled > 0 && result.downFilled > 0) {
           tradeCount++;
-          
-          // 发送交易通知
-          const profit = result.upFilled - result.totalCost;
-          notifyTrade(
-            pairInfo,
-            timeGroup,
-            upAskPrice,
-            downAskPrice,
-            result.upFilled,
-            result.totalCost,
-            profit,
-            type
-          ).catch(() => {});
-          
-          // 只执行一个机会后休息
+          // 只在成交时显示日志
+          Logger.success(`🎯 ${timeGroup} ${typeTag} ${pairInfo}: $${combinedCost.toFixed(4)} (${profitPercent.toFixed(2)}%) | 买入 ${result.upFilled} shares`);
           break;
         }
       }

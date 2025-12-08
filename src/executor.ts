@@ -34,16 +34,9 @@ export const executeArbitrage = async (
   const totalCost = upCost + downCost;
   const expectedProfit = shares - totalCost;
   
-  const typeTag = type === 'same_pool' ? '📊同池' : '🔀跨池';
-  const pairInfo = type === 'same_pool' 
-    ? upMarket.asset 
-    : `${upMarket.asset}↑${downMarket.asset}↓`;
-  
-  Logger.info(`🎯 ${timeGroup} ${typeTag} ${pairInfo}: Up $${upAskPrice.toFixed(3)} + Down $${downAskPrice.toFixed(3)} = $${(upAskPrice + downAskPrice).toFixed(4)}`);
-  
   // 模拟模式
   if (CONFIG.SIMULATION_MODE) {
-    Logger.success(`[模拟] 买入 ${shares} shares | Up $${upCost.toFixed(2)} + Down $${downCost.toFixed(2)} = $${totalCost.toFixed(2)} | 利润 $${expectedProfit.toFixed(2)}`);
+    // 日志在 index.ts 中统一输出
     
     // 记录仓位
     // Up 仓位
