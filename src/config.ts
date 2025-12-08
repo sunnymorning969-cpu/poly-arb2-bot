@@ -29,14 +29,14 @@ export const CONFIG = {
   // 吃单阈值：低于此价格视为便宜，优先吃单
   TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.50'),
   
-  // ========== 价格范围（基于实际市场观察调整） ==========
-  // Up 价格通常在 $0.10-$0.60（当 Down 贵时 Up 便宜）
-  UP_PRICE_MIN: 0.10,  // Up 挂单最低价格
-  UP_PRICE_MAX: 0.65,  // Up 挂单最高价格
+  // ========== 价格范围（放宽以适应市场波动） ==========
+  // Up 和 Down 是互补的：Up 便宜时 Down 贵，反之亦然
+  // 需要足够宽的范围才能配对成功
+  UP_PRICE_MIN: 0.10,   // Up 最低
+  UP_PRICE_MAX: 0.80,   // Up 最高（当 Down < $0.20 时，Up 可能 > $0.75）
   
-  // Down 价格通常在 $0.40-$0.90（当 Up 便宜时 Down 贵）
-  DOWN_PRICE_MIN: 0.35,  // Down 挂单最低价格
-  DOWN_PRICE_MAX: 0.70,  // Down 挂单最高价格（放宽以适应实际市场）
+  DOWN_PRICE_MIN: 0.10, // Down 最低
+  DOWN_PRICE_MAX: 0.80, // Down 最高（当 Up < $0.20 时，Down 可能 > $0.75）
   
   // ========== 挂单参数 ==========
   // 挂单间隔 (毫秒)

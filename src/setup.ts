@@ -50,10 +50,11 @@ const setup = async () => {
   // 策略参数（基于数据分析的推荐值）
   console.log('\n━━━ 策略参数 (基于数据分析) ━━━');
   console.log('   数据来源: 15000笔交易, 100%胜率, 平均成本$0.9894');
+  console.log('   策略: 吃单+挂单混合，双边同时成交');
   console.log('');
   
-  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [0.98]: ') || '0.98';
-  const takerThreshold = await question('吃单阈值 (低于此价格直接吃单) [0.48]: ') || '0.48';
+  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [1.00]: ') || '1.00';
+  const takerThreshold = await question('吃单阈值 (低于此价格直接吃单) [0.50]: ') || '0.50';
   const makerOrderSize = await question('单笔交易金额 (USD) [10]: ') || '10';
   const makerMaxImbalance = await question('最大仓位失衡 (超过则强制平衡) [30]: ') || '30';
   
@@ -80,10 +81,10 @@ TELEGRAM_GROUP_ID=${existingEnv.TELEGRAM_GROUP_ID || '@rickyhutest'}
 SIMULATION_MODE=${simulationMode}
 
 # ========== 核心策略参数（基于数据分析） ==========
-# 目标组合成本（数据显示66.7%事件成本在$0.95-$0.98）
+# 目标组合成本（$1.00 = 不亏不赚，<$1.00 = 有利润）
 MAX_COMBINED_COST=${maxCombinedCost}
 
-# 吃单阈值：低于此价格直接吃单（0.48 + 0.50 = 0.98）
+# 吃单阈值：低于此价格视为便宜，优先吃单
 TAKER_THRESHOLD=${takerThreshold}
 
 # ========== 市场开关 ==========
@@ -119,9 +120,10 @@ MAKER_MAX_SHARES_PER_ORDER=20
   console.log(`   最大失衡: ${makerMaxImbalance} shares`);
   console.log(`   市场: ${enable15min === '1' ? '15分钟' : ''}${enable15min === '1' && enable1hr === '1' ? ' + ' : ''}${enable1hr === '1' ? '1小时' : ''}`);
   console.log('\n📊 策略说明:');
-  console.log('   • 价格 < $0.48 → 直接吃单（抢便宜货）');
-  console.log('   • Up $0.50-$0.75 / Down $0.25-$0.50 → 挂单等待');
-  console.log('   • 自动平衡 Up/Down 仓位');
+  console.log('   • 价格 < $0.50 → 直接吃单');
+  console.log('   • 挂单价格范围: $0.10-$0.80');
+  console.log('   • 双边必须同时成交，避免仓位失衡');
+  console.log('   • 模拟模式用 bestAsk 价格（保守估算）');
   console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();
