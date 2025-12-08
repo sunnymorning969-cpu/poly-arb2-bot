@@ -15,7 +15,7 @@ export const CONFIG = {
   
   // ========== 市场开关 ==========
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
-  ENABLE_1HR: process.env.ENABLE_1HR === '1',  // 默认关闭1小时
+  ENABLE_1HR: process.env.ENABLE_1HR !== '0',  // 默认开启1小时（更多机会）
   
   // 启用混合策略（默认开启）
   ENABLE_MAKER: true,
@@ -26,8 +26,8 @@ export const CONFIG = {
   // 目标组合成本阈值（$1.00 = 不亏不赚，<$1.00 = 有利润）
   MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '1.00'),
   
-  // 吃单阈值：低于此价格视为便宜，优先吃单
-  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.50'),
+  // 吃单阈值：低于此价格视为便宜，优先吃单（放宽到 $0.55）
+  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.55'),
   
   // ========== 价格范围（放宽以适应市场波动） ==========
   // Up 和 Down 是互补的：Up 便宜时 Down 贵，反之亦然

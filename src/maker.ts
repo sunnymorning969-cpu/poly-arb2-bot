@@ -408,8 +408,13 @@ export const runMakerStrategy = async (): Promise<void> => {
       downBook.bestBid
     );
     
-    // 如果两边都跳过，继续（不打印日志减少噪音）
+    // 如果两边都跳过，显示原因（调试用）
     if (decision.upAction === 'skip' && decision.downAction === 'skip') {
+      // 只有当有吃单机会但无法配对时才显示（reason 包含"价格好"说明有机会）
+      if (decision.reason.includes('价格好')) {
+        Logger.info(`⏭️ ${market.asset}: ${decision.reason}`);
+        Logger.info(`   市场: Up $${upBook.bestBid.toFixed(3)}/$${upBook.bestAsk.toFixed(3)} | Down $${downBook.bestBid.toFixed(3)}/$${downBook.bestAsk.toFixed(3)}`);
+      }
       continue;
     }
     
@@ -445,33 +450,33 @@ export const runMakerStrategy = async (): Promise<void> => {
       const isBothMaker = decision.upAction === 'maker' && decision.downAction === 'maker';
       
       if (isBothMaker) {
-        // 双边挂单模拟：更保守的假设
-        // 1. 用 bestAsk 价格成交（而不是挂单价格），更接近真实情况
-        // 2. 只有当组合 bestAsk < MAX_COMBINED_COST 时才可能成交
-        // 3. 成交概率降到 2%（挂单成交本来就很难）
+        // 双边挂单模拟：
+        // 1. 用挂单价格成交（decision.upPrice/downPrice）
+        // 2. 成交概率 3%（挂单成交比较难）
+        // 3. 只要组合挂单价格 < $1.00 就有机会成交
         
-        const combinedAsk = upBook.bestAsk + downBook.bestAsk;
+        const combinedMakerPrice = decision.upPrice + decision.downPrice;
         
-        // 只有市场价格合适时才有成交可能
-        if (combinedAsk < CONFIG.MAX_COMBINED_COST) {
-          const fillChance = 0.02; // 2% 概率，更真实
+        // 只有挂单价格合理时才有成交可能
+        if (combinedMakerPrice < CONFIG.MAX_COMBINED_COST) {
+          const fillChance = 0.03; // 3% 概率
           
           if (Math.random() < fillChance) {
             const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            // 用 bestAsk 价格成交（保守假设）
+            // 用挂单价格成交
             upFilled = shares;
             downFilled = shares;
-            upCost = shares * upBook.bestAsk;
-            downCost = shares * downBook.bestAsk;
+            upCost = shares * decision.upPrice;
+            downCost = shares * decision.downPrice;
             stats.upFilled += shares;
             stats.downFilled += shares;
             stats.upCost += upCost;
             stats.downCost += downCost;
-            Logger.success(`📗 [模拟] 挂单成交 ${market.asset} Up ${shares} @ $${upBook.bestAsk.toFixed(3)} (市价)`);
-            Logger.success(`📕 [模拟] 挂单成交 ${market.asset} Down ${shares} @ $${downBook.bestAsk.toFixed(3)} (市价)`);
+            const avgCost = decision.upPrice + decision.downPrice;
+            Logger.success(`📗 [模拟] 挂单成交 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
+            Logger.success(`📕 [模拟] 挂单成交 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)} (组合$${avgCost.toFixed(3)})`);
           }
         }
-        // 如果 combinedAsk >= MAX_COMBINED_COST，挂单不会成交（等待更好价格）
       } else {
         // 非双边挂单：吃单可以单独执行（因为吃单是100%成交）
         
