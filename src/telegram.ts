@@ -46,7 +46,7 @@ const processQueue = async () => {
 // 发送启动通知
 export const notifyBotStarted = async () => {
   const message = `
-🚀 <b>套利机器人启动</b>
+🚀 <b>【进化版】套利机器人启动</b>
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
@@ -76,7 +76,7 @@ export const notifySettlement = async (
   const profitPercent = position.totalCost > 0 ? (profit / position.totalCost) * 100 : 0;
   
   const message = `
-${profitEmoji} <b>${position.asset} ${position.timeGroup === '15min' ? '15分钟' : '1小时'}场 结算</b>
+${profitEmoji} <b>【进化版】${position.asset} ${position.timeGroup === '15min' ? '15分钟' : '1小时'}场 结算</b>
 
 📊 <b>结果:</b> ${outcomeEmoji} ${outcome.toUpperCase()} 获胜
 
@@ -116,7 +116,7 @@ export const notifyRunningStats = async (stats: {
   const profitEmoji = stats.totalProfit >= 0 ? '📈' : '📉';
   
   const message = `
-📊 <b>运行统计</b>
+📊 <b>【进化版】运行统计</b>
 
 ⏱️ 运行时间: ${stats.runtime}
 
@@ -151,7 +151,7 @@ export const notifyTrade = async (
   const typeTag = type === 'same_pool' ? '📊 同池套利' : '🔀 跨池套利';
   
   const message = `
-💰 <b>${typeTag}成交</b>
+💰 <b>【进化版】${typeTag}成交</b>
 
 📊 <b>${timeGroup === '15min' ? '15分钟' : '1小时'}场 - ${pairInfo}</b>
 

@@ -1,3 +1,10 @@
+/**
+ * WebSocket 订单簿管理器
+ * 
+ * 使用 WebSocket 实时接收订单簿更新
+ * Polymarket WebSocket: wss://ws-subscriptions-clob.polymarket.com/ws/market
+ */
+
 import WebSocket from 'ws';
 import CONFIG from './config';
 import Logger from './logger';
@@ -19,8 +26,6 @@ const tokenToMarket: Map<string, { slug: string; outcome: 'up' | 'down' }> = new
 let ws: WebSocket | null = null;
 let isConnected = false;
 let reconnectTimer: NodeJS.Timeout | null = null;
-
-// 订阅的资产列表
 let subscribedAssets: string[] = [];
 
 export const subscribeToMarkets = (markets: Array<{ 
@@ -45,7 +50,7 @@ export const subscribeToMarkets = (markets: Array<{
   const oldAssets = subscribedAssets.sort().join(',');
   
   if (newAssets === oldAssets && isConnected) {
-    return; // 无需重新订阅
+    return;
   }
 
   subscribedAssets = allTokenIds;
@@ -67,24 +72,58 @@ const connectWebSocket = (tokenIds: string[]) => {
 
     ws.on('open', () => {
       isConnected = true;
-      Logger.success(`WebSocket 连接成功，订阅 ${tokenIds.length} 个 tokens`);
+      Logger.success(`✅ WebSocket 连接成功`);
       
-      // 订阅所有 token
-      tokenIds.forEach(tokenId => {
-        const subscribeMsg = {
-          type: 'market',
-          assets_ids: [tokenId],
-        };
-        ws?.send(JSON.stringify(subscribeMsg));
-      });
+      // 批量订阅所有 token（一条消息）
+      const subscribeMsg = {
+        auth: {},
+        type: 'market',
+        assets_ids: tokenIds,
+      };
+      
+      ws?.send(JSON.stringify(subscribeMsg));
+      Logger.info(`📡 发送订阅请求: ${tokenIds.length} 个 token`);
     });
 
     ws.on('message', (data: WebSocket.Data) => {
       try {
-        const msg = JSON.parse(data.toString());
+        const parsed = JSON.parse(data.toString());
         
-        if (msg.event_type === 'book') {
-          processBookUpdate(msg);
+        // 处理数组消息（订单簿快照）
+        if (Array.isArray(parsed)) {
+          let bookCount = 0;
+          for (const msg of parsed) {
+            if (msg.event_type === 'book' && msg.asset_id) {
+              processBookUpdate(msg);
+              bookCount++;
+            }
+          }
+          if (bookCount > 0) {
+            Logger.info(`📗 收到 ${bookCount} 个订单簿快照`);
+          }
+          return;
+        }
+        
+        // 处理单个消息
+        if (parsed.event_type === 'book') {
+          processBookUpdate(parsed);
+        }
+        
+        // 处理价格变化消息
+        if (parsed.price_changes && Array.isArray(parsed.price_changes)) {
+          for (const change of parsed.price_changes) {
+            const current = orderBooks.get(change.asset_id);
+            if (current && change.price && change.size) {
+              if (change.side === 'SELL') {
+                current.bestAsk = parseFloat(change.price);
+                current.bestAskSize = parseFloat(change.size);
+              } else if (change.side === 'BUY') {
+                current.bestBid = parseFloat(change.price);
+                current.bestBidSize = parseFloat(change.size);
+              }
+              current.lastUpdate = Date.now();
+            }
+          }
         }
       } catch (e) {
         // 忽略解析错误
@@ -93,6 +132,7 @@ const connectWebSocket = (tokenIds: string[]) => {
 
     ws.on('close', () => {
       isConnected = false;
+      Logger.warning('WebSocket 连接关闭');
       scheduleReconnect(tokenIds);
     });
 
@@ -111,7 +151,7 @@ const scheduleReconnect = (tokenIds: string[]) => {
     clearTimeout(reconnectTimer);
   }
   reconnectTimer = setTimeout(() => {
-    Logger.info('重新连接 WebSocket...');
+    Logger.info('🔄 重新连接 WebSocket...');
     connectWebSocket(tokenIds);
   }, 5000);
 };
@@ -122,12 +162,6 @@ const processBookUpdate = (msg: any) => {
 
   const bids = msg.bids || [];
   const asks = msg.asks || [];
-
-  // 找最佳买卖价
-  let bestBid = 0;
-  let bestBidSize = 0;
-  let bestAsk = 1;
-  let bestAskSize = 0;
 
   // 聚合同价格的深度
   const bidPrices: Map<number, number> = new Map();
@@ -146,6 +180,8 @@ const processBookUpdate = (msg: any) => {
   });
 
   // 找最高买价
+  let bestBid = 0;
+  let bestBidSize = 0;
   bidPrices.forEach((size, price) => {
     if (price > bestBid) {
       bestBid = price;
@@ -154,6 +190,8 @@ const processBookUpdate = (msg: any) => {
   });
 
   // 找最低卖价
+  let bestAsk = 1;
+  let bestAskSize = 0;
   askPrices.forEach((size, price) => {
     if (price < bestAsk) {
       bestAsk = price;
@@ -171,7 +209,15 @@ const processBookUpdate = (msg: any) => {
 };
 
 export const getOrderBook = (tokenId: string): OrderBook | null => {
-  return orderBooks.get(tokenId) || null;
+  const book = orderBooks.get(tokenId);
+  if (!book) return null;
+  
+  // 检查数据是否过期（10秒）
+  if (Date.now() - book.lastUpdate > 10000) {
+    return null;
+  }
+  
+  return book;
 };
 
 export const isWebSocketConnected = (): boolean => {
