@@ -295,40 +295,63 @@ export const runMakerStrategy = async (): Promise<void> => {
     
     // 模拟模式
     if (CONFIG.SIMULATION_MODE) {
-      // 基于价格关系判断成交概率
-      // 组合成本越低，成交概率越高（更有吸引力的价格）
+      // 真实挂单逻辑模拟：
+      // 1. 如果挂单价格 >= bestAsk，相当于吃单，100% 成交（但价格用 bestAsk）
+      // 2. 如果挂单价格 < bestAsk，是真正的挂单，成交概率很低（5-15%）
       
       let upFilled = 0;
       let downFilled = 0;
-      
-      // 计算成交概率：基于组合成本
-      // 组合成本 < 0.95: 80% 成交
-      // 组合成本 < 0.98: 50% 成交
-      // 组合成本 < 1.00: 30% 成交
-      // 组合成本 >= 1.00: 15% 成交
-      let baseFillChance = 0.15;
-      if (combinedCost < 0.95) {
-        baseFillChance = 0.8;
-      } else if (combinedCost < 0.98) {
-        baseFillChance = 0.5;
-      } else if (combinedCost < 1.00) {
-        baseFillChance = 0.3;
-      }
+      let actualUpPrice = upPrice;
+      let actualDownPrice = downPrice;
       
       // Up 挂单成交判断
-      if (shouldPlaceUp && Math.random() < baseFillChance) {
-        upFilled = shares;
-        stats.upFilled += shares;
-        stats.upCost += shares * upPrice;
-        Logger.success(`📗 [模拟] ${market.asset} Up ${shares} @ $${upPrice.toFixed(3)} 成交 (概率${(baseFillChance*100).toFixed(0)}%)`);
+      if (shouldPlaceUp) {
+        if (upPrice >= upBook.bestAsk) {
+          // 吃单模式：直接成交，但用 bestAsk 价格
+          actualUpPrice = upBook.bestAsk;
+          upFilled = shares;
+          stats.upFilled += shares;
+          stats.upCost += shares * actualUpPrice;
+          Logger.success(`📗 [模拟] ${market.asset} Up ${shares} @ $${actualUpPrice.toFixed(3)} 吃单成交`);
+        } else {
+          // 挂单模式：低概率成交（真实市场需要等对手方）
+          // 价格越接近 bestAsk，成交概率越高
+          const spread = upBook.bestAsk - upBook.bestBid;
+          const priceGap = upBook.bestAsk - upPrice;
+          // 概率 = 5% 基础 + 最多 10%（价格越接近 bestAsk 越高）
+          const fillChance = spread > 0 ? 0.05 + Math.max(0, (1 - priceGap / spread) * 0.10) : 0.05;
+          
+          if (Math.random() < fillChance) {
+            upFilled = shares;
+            stats.upFilled += shares;
+            stats.upCost += shares * upPrice;
+            Logger.success(`📗 [模拟] ${market.asset} Up ${shares} @ $${upPrice.toFixed(3)} 挂单成交 (${(fillChance*100).toFixed(0)}%)`);
+          }
+        }
       }
       
       // Down 挂单成交判断
-      if (shouldPlaceDown && Math.random() < baseFillChance) {
-        downFilled = shares;
-        stats.downFilled += shares;
-        stats.downCost += shares * downPrice;
-        Logger.success(`📕 [模拟] ${market.asset} Down ${shares} @ $${downPrice.toFixed(3)} 成交 (概率${(baseFillChance*100).toFixed(0)}%)`);
+      if (shouldPlaceDown) {
+        if (downPrice >= downBook.bestAsk) {
+          // 吃单模式
+          actualDownPrice = downBook.bestAsk;
+          downFilled = shares;
+          stats.downFilled += shares;
+          stats.downCost += shares * actualDownPrice;
+          Logger.success(`📕 [模拟] ${market.asset} Down ${shares} @ $${actualDownPrice.toFixed(3)} 吃单成交`);
+        } else {
+          // 挂单模式
+          const spread = downBook.bestAsk - downBook.bestBid;
+          const priceGap = downBook.bestAsk - downPrice;
+          const fillChance = spread > 0 ? 0.05 + Math.max(0, (1 - priceGap / spread) * 0.10) : 0.05;
+          
+          if (Math.random() < fillChance) {
+            downFilled = shares;
+            stats.downFilled += shares;
+            stats.downCost += shares * downPrice;
+            Logger.success(`📕 [模拟] ${market.asset} Down ${shares} @ $${downPrice.toFixed(3)} 挂单成交 (${(fillChance*100).toFixed(0)}%)`);
+          }
+        }
       }
       
       // 同步到 positions（供 Telegram 统计使用）
@@ -339,9 +362,9 @@ export const runMakerStrategy = async (): Promise<void> => {
           timeGroup: market.timeGroup,
           upShares: upFilled,
           downShares: downFilled,
-          upCost: upFilled * upPrice,
-          downCost: downFilled * downPrice,
-          totalCost: upFilled * upPrice + downFilled * downPrice,
+          upCost: upFilled * (upFilled > 0 ? actualUpPrice : 0),
+          downCost: downFilled * (downFilled > 0 ? actualDownPrice : 0),
+          totalCost: upFilled * actualUpPrice + downFilled * actualDownPrice,
           timestamp: Date.now(),
           endTime: market.endTime,
         });
