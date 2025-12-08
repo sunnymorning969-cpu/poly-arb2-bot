@@ -17,6 +17,9 @@ export const CONFIG = {
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
   ENABLE_1HR: process.env.ENABLE_1HR === '1',  // 默认关闭1小时
   
+  // 启用混合策略（默认开启）
+  ENABLE_MAKER: true,
+  
   // ========== 混合策略核心参数（基于数据分析） ==========
   // 数据来源：15000笔交易，6个事件，100%胜率，平均成本$0.9894
   
