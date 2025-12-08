@@ -46,20 +46,19 @@ const processQueue = async () => {
 // 发送启动通知
 export const notifyBotStarted = async () => {
   const message = `
-🚀 <b>【混合策略】套利机器人启动</b>
+🚀 <b>套利机器人启动</b>
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
-   • 目标组合成本: ≤ $${CONFIG.MAX_COMBINED_COST}
-   • 吃单阈值: < $${CONFIG.TAKER_THRESHOLD}
+   • 目标组合成本: < $${CONFIG.MAX_COMBINED_COST}
+   • Taker配对最高价: $${CONFIG.TAKER_THRESHOLD}
    • 单笔金额: $${CONFIG.MAKER_ORDER_SIZE_USD}
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
 
-📌 <b>策略说明 (基于15000笔数据分析):</b>
-   • 价格 < $${CONFIG.TAKER_THRESHOLD} → 直接吃单
-   • Up $${CONFIG.UP_PRICE_MIN}-$${CONFIG.UP_PRICE_MAX} → 挂单
-   • Down $${CONFIG.DOWN_PRICE_MIN}-$${CONFIG.DOWN_PRICE_MAX} → 挂单
+📌 <b>策略 (91% Maker + 9% Taker):</b>
+   • 双边挂Maker单，等待成交
+   • 单边成交后，用Taker配对
    • 最大仓位失衡: ${CONFIG.MAKER_MAX_IMBALANCE} shares
 `.trim();
 
@@ -93,7 +92,7 @@ export const notifySettlement = async (
   }
   
   const message = `
-${profitEmoji} <b>【混合策略】${timeGroupName} 第${stats.totalSettled}次结算</b>
+${profitEmoji} <b>【Maker套利】${timeGroupName} 第${stats.totalSettled}次结算</b>
 
 📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>${balanceTag}
 
@@ -129,7 +128,7 @@ export const notifyRunningStats = async (stats: {
   const profitEmoji = stats.totalProfit >= 0 ? '📈' : '📉';
   
   const message = `
-📊 <b>【混合策略】运行统计</b>
+📊 <b>【Maker套利】运行统计</b>
 
 ⏱️ 运行时间: ${stats.runtime}
 
@@ -184,7 +183,7 @@ export const notifyEventSummary = async (summary: {
     : '⚠️ 需结算确认';
   
   const message = `
-📋 <b>【混合策略】事件周期结束</b>
+📋 <b>【Maker套利】事件周期结束</b>
 
 📊 <b>${asset} ${timeGroupName}</b>
 
@@ -221,7 +220,7 @@ export const notifyTrade = async (
   const typeTag = type === 'same_pool' ? '📊 同池套利' : '🔀 跨池套利';
   
   const message = `
-💰 <b>【混合策略】${typeTag}成交</b>
+💰 <b>【Maker套利】${typeTag}成交</b>
 
 📊 <b>${timeGroup === '15min' ? '15分钟' : '1小时'}场 - ${pairInfo}</b>
 

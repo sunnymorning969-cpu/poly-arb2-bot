@@ -42,6 +42,10 @@ const activeOrders: Map<string, ActiveOrder> = new Map();
 // 上次挂单时间
 let lastMakerTime = 0;
 
+// 上次日志输出时间（节流用）
+let lastLogTime = 0;
+const LOG_INTERVAL = 1000; // 日志间隔 1 秒
+
 /**
  * 初始化周期统计
  */
@@ -77,23 +81,27 @@ interface TradeDecision {
 }
 
 /**
- * 智能策略决策（基于数据分析）
+ * 智能策略决策 - "双边挂单 + Taker配对"
  * 
- * 数据洞察：
- * - Up 交易 74% 在 $0.50-$0.90
- * - Down 交易 58% 在 $0.20-$0.50
- * - 平均组合成本 $0.9894，66.7% 在 $0.95-$0.98
+ * 数据分析发现（15000笔交易）：
+ * - 91% Maker，9% Taker
+ * - 100% 事件 Maker 先成交
+ * - 配对平均 20 秒，不是同时
+ * - 75% 交易在前半段完成
+ * - Down Taker 比例 12.5%，Up 只有 4%
  * 
  * 策略：
- * 1. 吃单：当价格 < $0.48 时直接吃单（抢便宜货）
- * 2. 挂单：在合理价格范围内挂单等待成交
- * 3. 跳过：价格不合适时不操作
+ * 1. 有失衡 → Taker 吃单配对
+ * 2. 无失衡 → 双边挂 Maker 单
  */
 const makeTradeDecision = (
   upBestAsk: number,
   downBestAsk: number,
   upBestBid: number,
-  downBestBid: number
+  downBestBid: number,
+  imbalance: number = 0,
+  upAvgCost: number = 0,
+  downAvgCost: number = 0
 ): TradeDecision => {
   let upAction: 'taker' | 'maker' | 'skip' = 'skip';
   let downAction: 'taker' | 'maker' | 'skip' = 'skip';
@@ -101,134 +109,51 @@ const makeTradeDecision = (
   let downPrice = 0;
   let reason = '';
   
-  // 检查是否有吃单机会（价格 < TAKER_THRESHOLD）
-  const upTakerOpportunity = upBestAsk < CONFIG.TAKER_THRESHOLD;
-  const downTakerOpportunity = downBestAsk < CONFIG.TAKER_THRESHOLD;
+  const needMoreDown = imbalance > 0;  // Up 多，需要 Down
+  const needMoreUp = imbalance < 0;    // Down 多，需要 Up
   
-  // 情况1：双边都有吃单机会（极好的机会）
-  if (upTakerOpportunity && downTakerOpportunity) {
-    const combinedCost = upBestAsk + downBestAsk;
-    if (combinedCost < CONFIG.MAX_COMBINED_COST) {
-      upAction = 'taker';
-      downAction = 'taker';
-      upPrice = upBestAsk;
-      downPrice = downBestAsk;
-      reason = `双边吃单机会！组合成本 $${combinedCost.toFixed(3)}`;
-      return { upAction, downAction, upPrice, downPrice, reason };
-    }
-  }
-  
-  // 情况2：单边吃单机会 - 只在另一边也有机会时才执行（避免单边造成失衡）
-  if (upTakerOpportunity) {
-    // Up 便宜，检查 Down 是否也有合理机会
-    // 组合成本 = Up + Down <= MAX_COMBINED_COST
-    const maxDownPrice = CONFIG.MAX_COMBINED_COST - upBestAsk;
-    
-    // 检查 Down 是否可以直接吃单
+  // ========== 优先级1：有失衡，Taker 配对 ==========
+  if (needMoreDown && upAvgCost > 0) {
+    const maxDownPrice = CONFIG.MAX_COMBINED_COST - upAvgCost;
     if (downBestAsk <= maxDownPrice) {
-      // 双边都可以吃单
-      upAction = 'taker';
       downAction = 'taker';
-      upPrice = upBestAsk;
       downPrice = downBestAsk;
-      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${(upPrice + downPrice).toFixed(3)}`;
+      reason = `🔗 Taker配对 Down$${downBestAsk.toFixed(2)} (组合$${(upAvgCost + downBestAsk).toFixed(2)})`;
       return { upAction, downAction, upPrice, downPrice, reason };
     }
-    
-    // 检查 Down 是否可以挂单
-    const potentialDownPrice = Math.min(downBestBid + CONFIG.MAKER_OFFSET, maxDownPrice);
-    const roundedDownPrice = Math.round(potentialDownPrice * 100) / 100;
-    
-    if (roundedDownPrice >= CONFIG.DOWN_PRICE_MIN && roundedDownPrice <= CONFIG.DOWN_PRICE_MAX && roundedDownPrice > downBestBid) {
-      upAction = 'taker';
-      downAction = 'maker';
-      upPrice = upBestAsk;
-      downPrice = roundedDownPrice;
-      reason = `Up 吃单 $${upPrice.toFixed(3)}，Down 挂单 $${downPrice.toFixed(3)}`;
-      return { upAction, downAction, upPrice, downPrice, reason };
-    }
-    
-    // Down 无法配对，直接返回跳过（不要继续到情况3！）
-    return { 
-      upAction: 'skip', 
-      downAction: 'skip', 
-      upPrice: 0, 
-      downPrice: 0, 
-      reason: `Up 价格好 $${upBestAsk.toFixed(3)} 但 Down 无合适机会，跳过` 
-    };
   }
   
-  if (downTakerOpportunity) {
-    // Down 便宜，检查 Up 是否也有合理机会
-    // 组合成本 = Up + Down <= MAX_COMBINED_COST
-    const maxUpPrice = CONFIG.MAX_COMBINED_COST - downBestAsk;
-    
-    // 检查 Up 是否可以直接吃单
+  if (needMoreUp && downAvgCost > 0) {
+    const maxUpPrice = CONFIG.MAX_COMBINED_COST - downAvgCost;
     if (upBestAsk <= maxUpPrice) {
-      // 双边都可以吃单
       upAction = 'taker';
-      downAction = 'taker';
       upPrice = upBestAsk;
-      downPrice = downBestAsk;
-      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${(upPrice + downPrice).toFixed(3)}`;
+      reason = `🔗 Taker配对 Up$${upBestAsk.toFixed(2)} (组合$${(downAvgCost + upBestAsk).toFixed(2)})`;
       return { upAction, downAction, upPrice, downPrice, reason };
     }
-    
-    // 检查 Up 是否可以挂单
-    const potentialUpPrice = Math.min(upBestBid + CONFIG.MAKER_OFFSET, maxUpPrice);
-    const roundedUpPrice = Math.round(potentialUpPrice * 100) / 100;
-    
-    if (roundedUpPrice >= CONFIG.UP_PRICE_MIN && roundedUpPrice <= CONFIG.UP_PRICE_MAX && roundedUpPrice > upBestBid) {
-      upAction = 'maker';
-      downAction = 'taker';
-      upPrice = roundedUpPrice;
-      downPrice = downBestAsk;
-      reason = `Down 吃单 $${downPrice.toFixed(3)}，Up 挂单 $${upPrice.toFixed(3)}`;
-      return { upAction, downAction, upPrice, downPrice, reason };
-    }
-    
-    // Up 无法配对，直接返回跳过（不要继续到情况3！）
-    return { 
-      upAction: 'skip', 
-      downAction: 'skip', 
-      upPrice: 0, 
-      downPrice: 0, 
-      reason: `Down 价格好 $${downBestAsk.toFixed(3)} 但 Up 无合适机会，跳过` 
-    };
   }
   
-  // 情况3：没有吃单机会，检查挂单机会
-  // 在 bestBid 上方挂单，等待成交
-  // 注意：必须两边都可以挂单才执行，避免单边失衡
+  // ========== 优先级2：双边挂 Maker 单（核心！91%的交易）==========
   const potentialUpPrice = Math.round((upBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
   const potentialDownPrice = Math.round((downBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
-  const combinedCost = potentialUpPrice + potentialDownPrice;
+  const combinedMakerCost = potentialUpPrice + potentialDownPrice;
   
-  // 检查组合成本是否满足要求
-  if (combinedCost < CONFIG.MAX_COMBINED_COST) {
-    // 检查价格是否在合理范围
+  if (combinedMakerCost < CONFIG.MAX_COMBINED_COST) {
     const upInRange = potentialUpPrice >= CONFIG.UP_PRICE_MIN && potentialUpPrice <= CONFIG.UP_PRICE_MAX;
     const downInRange = potentialDownPrice >= CONFIG.DOWN_PRICE_MIN && potentialDownPrice <= CONFIG.DOWN_PRICE_MAX;
     
-    // 只有双边都在范围内才挂单，避免单边失衡
     if (upInRange && downInRange) {
       upAction = 'maker';
       downAction = 'maker';
       upPrice = potentialUpPrice;
       downPrice = potentialDownPrice;
-      reason = `双边挂单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${combinedCost.toFixed(3)}`;
-    } else if (!upInRange && !downInRange) {
-      reason = `价格超出范围: Up $${potentialUpPrice.toFixed(3)} Down $${potentialDownPrice.toFixed(3)}`;
-    } else {
-      // 单边在范围内，跳过避免失衡
-      reason = upInRange 
-        ? `Up $${potentialUpPrice.toFixed(3)} 可挂但 Down $${potentialDownPrice.toFixed(3)} 超范围，跳过`
-        : `Down $${potentialDownPrice.toFixed(3)} 可挂但 Up $${potentialUpPrice.toFixed(3)} 超范围，跳过`;
+      reason = `📝 双边Maker Up$${upPrice.toFixed(2)}+Down$${downPrice.toFixed(2)}=$${combinedMakerCost.toFixed(2)}`;
+      return { upAction, downAction, upPrice, downPrice, reason };
     }
-  } else {
-    reason = `组合成本 $${combinedCost.toFixed(3)} > $${CONFIG.MAX_COMBINED_COST}`;
   }
   
+  // ========== 优先级3：等待 ==========
+  reason = `⏳ 组合$${combinedMakerCost.toFixed(2)}>${CONFIG.MAX_COMBINED_COST}，等待`;
   return { upAction, downAction, upPrice, downPrice, reason };
 };
 
@@ -360,7 +285,7 @@ const checkAndBalance = async (slug: string, stats: CycleStats, market: any): Pr
 };
 
 /**
- * 混合策略主函数（吃单+挂单）
+ * 主策略函数（91% Maker + 9% Taker配对）
  * 基于数据分析：15000笔交易，100%胜率，平均成本$0.9894
  */
 export const runMakerStrategy = async (): Promise<void> => {
@@ -400,23 +325,29 @@ export const runMakerStrategy = async (): Promise<void> => {
       continue;
     }
     
-    // 智能策略决策
+    // 计算当前仓位的平均成本
+    const imbalance = stats.upFilled - stats.downFilled;
+    const upAvgCost = stats.upFilled > 0 ? stats.upCost / stats.upFilled : 0;
+    const downAvgCost = stats.downFilled > 0 ? stats.downCost / stats.downFilled : 0;
+    
+    // 智能策略决策（传入仓位信息，支持先买后配对）
     const decision = makeTradeDecision(
       upBook.bestAsk,
       downBook.bestAsk,
       upBook.bestBid,
-      downBook.bestBid
+      downBook.bestBid,
+      imbalance,
+      upAvgCost,
+      downAvgCost
     );
     
-    // 如果两边都跳过，显示原因（调试用）
+    // 如果两边都跳过，继续（不输出日志减少噪音）
     if (decision.upAction === 'skip' && decision.downAction === 'skip') {
-      // 只有当有吃单机会但无法配对时才显示（reason 包含"价格好"说明有机会）
-      if (decision.reason.includes('价格好')) {
-        Logger.info(`⏭️ ${market.asset}: ${decision.reason}`);
-        Logger.info(`   市场: Up $${upBook.bestBid.toFixed(3)}/$${upBook.bestAsk.toFixed(3)} | Down $${downBook.bestBid.toFixed(3)}/$${downBook.bestAsk.toFixed(3)}`);
-      }
       continue;
     }
+    
+    // 日志节流：非成交日志每秒只输出一次
+    const shouldLog = Date.now() - lastLogTime >= LOG_INTERVAL;
     
     // 计算交易数量
     const upDepth = upBook.bestAskSize || 10;
@@ -435,9 +366,12 @@ export const runMakerStrategy = async (): Promise<void> => {
     const needMoreUp = diff < 0;  // Up 少
     const needMoreDown = diff > 0;  // Down 少
     
-    // 显示决策信息
-    Logger.info(`🎯 ${market.asset}: ${decision.reason}`);
-    Logger.info(`   市场: Up $${upBook.bestBid.toFixed(3)}/$${upBook.bestAsk.toFixed(3)} | Down $${downBook.bestBid.toFixed(3)}/$${downBook.bestAsk.toFixed(3)}`);
+    // 显示决策信息（每秒最多一次）
+    if (shouldLog) {
+      Logger.info(`🎯 ${market.asset}: ${decision.reason}`);
+      Logger.info(`   市场: Up $${upBook.bestBid.toFixed(3)}/$${upBook.bestAsk.toFixed(3)} | Down $${downBook.bestBid.toFixed(3)}/$${downBook.bestAsk.toFixed(3)}`);
+      lastLogTime = Date.now();
+    }
     
     // 模拟模式
     if (CONFIG.SIMULATION_MODE) {
@@ -446,88 +380,65 @@ export const runMakerStrategy = async (): Promise<void> => {
       let upCost = 0;
       let downCost = 0;
       
-      // 关键修复：双边挂单必须同时成交，避免单边失衡
+      // 模拟逻辑（基于数据分析：91% Maker，配对平均20秒）
       const isBothMaker = decision.upAction === 'maker' && decision.downAction === 'maker';
       
       if (isBothMaker) {
-        // 双边挂单模拟：
-        // 1. 用挂单价格成交（decision.upPrice/downPrice）
-        // 2. 成交概率 3%（挂单成交比较难）
-        // 3. 只要组合挂单价格 < $1.00 就有机会成交
-        
+        // 双边 Maker 模拟（核心逻辑！）
+        // 数据显示：Maker 单独成交是正常的，之后用 Taker 配对
         const combinedMakerPrice = decision.upPrice + decision.downPrice;
         
-        // 只有挂单价格合理时才有成交可能
         if (combinedMakerPrice < CONFIG.MAX_COMBINED_COST) {
-          const fillChance = 0.03; // 3% 概率
+          // 模拟单边成交（更接近真实：一边先成交，后续配对）
+          const fillChance = 0.05; // 5% 单边成交概率
+          const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
           
+          // Up 成交
           if (Math.random() < fillChance) {
-            const shares = Math.min(makerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            // 用挂单价格成交
             upFilled = shares;
-            downFilled = shares;
             upCost = shares * decision.upPrice;
-            downCost = shares * decision.downPrice;
             stats.upFilled += shares;
-            stats.downFilled += shares;
             stats.upCost += upCost;
+            Logger.success(`📗 [模拟] Maker成交 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
+          }
+          
+          // Down 成交（独立概率）
+          if (Math.random() < fillChance) {
+            downFilled = shares;
+            downCost = shares * decision.downPrice;
+            stats.downFilled += shares;
             stats.downCost += downCost;
-            const avgCost = decision.upPrice + decision.downPrice;
-            Logger.success(`📗 [模拟] 挂单成交 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
-            Logger.success(`📕 [模拟] 挂单成交 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)} (组合$${avgCost.toFixed(3)})`);
+            Logger.success(`📕 [模拟] Maker成交 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)}`);
+          }
+          
+          // 如果双边都成交，显示组合成本
+          if (upFilled > 0 && downFilled > 0) {
+            Logger.success(`   💰 双边成交! 组合$${combinedMakerPrice.toFixed(3)}`);
           }
         }
       } else {
-        // 非双边挂单：吃单可以单独执行（因为吃单是100%成交）
+        // Taker 配对模式：100% 成交
+        const shares = Math.min(takerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
         
-        // 执行 Up 交易
         if (decision.upAction === 'taker') {
-          const shouldTradeUp = needMoreUp || diff === 0;
-          if (shouldTradeUp) {
-            const shares = Math.min(takerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            upFilled = shares;
-            upCost = shares * decision.upPrice;
-            stats.upFilled += shares;
-            stats.upCost += upCost;
-            Logger.success(`📗 [模拟] 吃单 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
-          }
-        }
-        
-        // 执行 Down 交易
-        if (decision.downAction === 'taker') {
-          const shouldTradeDown = needMoreDown || diff === 0;
-          if (shouldTradeDown) {
-            const shares = Math.min(takerShares, maxByFunds, CONFIG.MAKER_MAX_SHARES_PER_ORDER);
-            downFilled = shares;
-            downCost = shares * decision.downPrice;
-            stats.downFilled += shares;
-            stats.downCost += downCost;
-            Logger.success(`📕 [模拟] 吃单 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)}`);
-          }
-        }
-        
-        // 混合模式（一边吃单一边挂单）：挂单方用 bestAsk 价格（保守假设）
-        if (decision.upAction === 'taker' && decision.downAction === 'maker' && upFilled > 0) {
-          const shares = upFilled;
-          downFilled = shares;
-          downCost = shares * downBook.bestAsk; // 用 bestAsk 而不是挂单价格
-          stats.downFilled += shares;
-          stats.downCost += downCost;
-          Logger.success(`📕 [模拟] 配对 ${market.asset} Down ${shares} @ $${downBook.bestAsk.toFixed(3)} (市价)`);
-        }
-        
-        if (decision.downAction === 'taker' && decision.upAction === 'maker' && downFilled > 0) {
-          const shares = downFilled;
           upFilled = shares;
-          upCost = shares * upBook.bestAsk; // 用 bestAsk 而不是挂单价格
+          upCost = shares * decision.upPrice;
           stats.upFilled += shares;
           stats.upCost += upCost;
-          Logger.success(`📗 [模拟] 配对 ${market.asset} Up ${shares} @ $${upBook.bestAsk.toFixed(3)} (市价)`);
+          Logger.success(`📗 [模拟] Taker配对 ${market.asset} Up ${shares} @ $${decision.upPrice.toFixed(3)}`);
+        }
+        
+        if (decision.downAction === 'taker') {
+          downFilled = shares;
+          downCost = shares * decision.downPrice;
+          stats.downFilled += shares;
+          stats.downCost += downCost;
+          Logger.success(`📕 [模拟] Taker配对 ${market.asset} Down ${shares} @ $${decision.downPrice.toFixed(3)}`);
         }
       }
       
-      // 同步到 positions（只有双边都成交才记录）
-      if (upFilled > 0 && downFilled > 0) {
+      // 同步到 positions（单边或双边成交都记录）
+      if (upFilled > 0 || downFilled > 0) {
         addPosition({
           slug: market.slug,
           asset: market.asset,

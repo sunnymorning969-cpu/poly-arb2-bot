@@ -30,17 +30,17 @@ let lastTelegramTime = 0;
 
 // 主循环
 const mainLoop = async () => {
-  Logger.header('🎯 混合套利机器人 (吃单+挂单)');
+  Logger.header('🎯 套利机器人 (91% Maker + 9% Taker)');
   
   // 显示配置
   Logger.info(`模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}`);
-  Logger.info(`目标组合成本: ≤ $${CONFIG.MAX_COMBINED_COST}`);
-  Logger.info(`吃单阈值: < $${CONFIG.TAKER_THRESHOLD}`);
+  Logger.info(`目标组合成本: < $${CONFIG.MAX_COMBINED_COST}`);
+  Logger.info(`Taker配对最高价: $${CONFIG.TAKER_THRESHOLD}`);
   Logger.info(`单笔金额: $${CONFIG.MAKER_ORDER_SIZE_USD}`);
   Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}`);
   Logger.info(`1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
   Logger.info(`最大失衡: ${CONFIG.MAKER_MAX_IMBALANCE} shares`);
-  Logger.info(`策略: 价格<$${CONFIG.TAKER_THRESHOLD}→吃单 | Up $${CONFIG.UP_PRICE_MIN}-$${CONFIG.UP_PRICE_MAX} / Down $${CONFIG.DOWN_PRICE_MIN}-$${CONFIG.DOWN_PRICE_MAX}→挂单`);
+  Logger.info(`策略: 双边挂Maker，单边成交后Taker配对`);
   Logger.divider();
   
   // 实盘模式初始化
@@ -101,7 +101,7 @@ const mainLoop = async () => {
         }
       }
       
-      // 运行混合策略（吃单+挂单）
+      // 运行策略（Maker + Taker配对）
       await runMakerStrategy();
       await checkOrderStatus();
       

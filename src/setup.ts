@@ -16,8 +16,8 @@ const question = (prompt: string): Promise<string> => {
 const setup = async () => {
   console.log('\n');
   console.log('═'.repeat(60));
-  console.log('  🎯 混合套利机器人 - 配置向导');
-  console.log('  📊 策略参数基于 15000 笔交易数据分析');
+  console.log('  🎯 套利机器人 - 配置向导');
+  console.log('  📊 策略: 91% Maker + 9% Taker 配对');
   console.log('═'.repeat(60));
   console.log('\n');
   
@@ -48,13 +48,14 @@ const setup = async () => {
   const simulationMode = simMode !== '0';
   
   // 策略参数（基于数据分析的推荐值）
-  console.log('\n━━━ 策略参数 (基于数据分析) ━━━');
-  console.log('   数据来源: 15000笔交易, 100%胜率, 平均成本$0.9894');
-  console.log('   策略: 吃单+挂单混合，双边同时成交');
+  console.log('\n━━━ 策略参数 (基于15000笔交易分析) ━━━');
+  console.log('   发现: 91% Maker单, 9% Taker单');
+  console.log('   发现: 配对平均需要20秒，不是同时');
+  console.log('   策略: 双边挂Maker，单边成交后Taker配对');
   console.log('');
   
-  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [1.00]: ') || '1.00';
-  const takerThreshold = await question('吃单阈值 (低于此价格直接吃单) [0.50]: ') || '0.50';
+  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [0.99]: ') || '0.99';
+  const takerThreshold = await question('Taker配对最高价 (失衡时配对用) [0.65]: ') || '0.65';
   const makerOrderSize = await question('单笔交易金额 (USD) [10]: ') || '10';
   const makerMaxImbalance = await question('最大仓位失衡 (超过则强制平衡) [30]: ') || '30';
   
@@ -65,8 +66,8 @@ const setup = async () => {
   
   // 生成配置
   const envContent = `# ═══════════════════════════════════════════════════════════
-# 混合套利机器人配置
-# 策略参数基于 15000 笔交易数据分析（100%胜率）
+# 套利机器人配置（基于15000笔交易分析）
+# 策略: 91% Maker + 9% Taker 配对
 # ═══════════════════════════════════════════════════════════
 
 # ========== 钱包配置 ==========
@@ -80,11 +81,11 @@ TELEGRAM_GROUP_ID=${existingEnv.TELEGRAM_GROUP_ID || '@rickyhutest'}
 # ========== 运行模式 ==========
 SIMULATION_MODE=${simulationMode}
 
-# ========== 核心策略参数（基于数据分析） ==========
-# 目标组合成本（$1.00 = 不亏不赚，<$1.00 = 有利润）
+# ========== 核心策略参数 ==========
+# 目标组合成本（< $0.99 才有利润）
 MAX_COMBINED_COST=${maxCombinedCost}
 
-# 吃单阈值：低于此价格视为便宜，优先吃单
+# Taker配对最高价（失衡时用Taker补单的最高价）
 TAKER_THRESHOLD=${takerThreshold}
 
 # ========== 市场开关 ==========
@@ -98,8 +99,8 @@ MAKER_ORDER_SIZE_USD=${makerOrderSize}
 # 最大仓位失衡 (超过此值会强制平衡)
 MAKER_MAX_IMBALANCE=${makerMaxImbalance}
 
-# 扫描间隔 (毫秒) - 建议 3000ms
-MAKER_INTERVAL_MS=3000
+# 扫描间隔 (毫秒) - 5ms 极速扫描
+MAKER_INTERVAL_MS=5
 
 # 单笔最大 shares
 MAKER_MAX_SHARES_PER_ORDER=20
@@ -114,16 +115,16 @@ MAKER_MAX_SHARES_PER_ORDER=20
   console.log('═'.repeat(60));
   console.log('\n📝 配置摘要:');
   console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
-  console.log(`   目标组合成本: ≤ $${maxCombinedCost}`);
-  console.log(`   吃单阈值: < $${takerThreshold}`);
+  console.log(`   目标组合成本: < $${maxCombinedCost}`);
+  console.log(`   Taker配对最高价: $${takerThreshold}`);
   console.log(`   单笔金额: $${makerOrderSize}`);
   console.log(`   最大失衡: ${makerMaxImbalance} shares`);
   console.log(`   市场: ${enable15min === '1' ? '15分钟' : ''}${enable15min === '1' && enable1hr === '1' ? ' + ' : ''}${enable1hr === '1' ? '1小时' : ''}`);
-  console.log('\n📊 策略说明:');
-  console.log('   • 价格 < $0.50 → 直接吃单');
-  console.log('   • 挂单价格范围: $0.10-$0.80');
-  console.log('   • 双边必须同时成交，避免仓位失衡');
-  console.log('   • 模拟模式用 bestAsk 价格（保守估算）');
+  console.log('\n📊 策略说明 (基于数据分析):');
+  console.log('   • 双边挂Maker单，等待成交 (91%交易)');
+  console.log('   • 单边成交后，用Taker配对 (9%交易)');
+  console.log('   • 配对不是同时的，平均间隔20秒');
+  console.log('   • 75%交易在前半段完成，早期进场');
   console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();

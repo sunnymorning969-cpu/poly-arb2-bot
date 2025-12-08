@@ -14,20 +14,22 @@ export const CONFIG = {
   SIMULATION_MODE: process.env.SIMULATION_MODE !== 'false',
   
   // ========== 市场开关 ==========
+  // 根据分析：只交易 BTC 15分钟场效果最好
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
-  ENABLE_1HR: process.env.ENABLE_1HR !== '0',  // 默认开启1小时（更多机会）
+  ENABLE_1HR: process.env.ENABLE_1HR === '1',  // 默认关闭1小时
   
-  // 启用混合策略（默认开启）
+  // 启用 Maker 策略（默认开启）
   ENABLE_MAKER: true,
   
-  // ========== 混合策略核心参数（基于数据分析） ==========
-  // 数据来源：15000笔交易，6个事件，100%胜率，平均成本$0.9894
+  // ========== 核心策略参数（基于数据分析：15000笔交易）==========
+  // 发现：91% Maker，9% Taker；100% 事件 Maker 先成交
+  // 策略：双边挂 Maker 单，单边成交后用 Taker 配对
   
-  // 目标组合成本阈值（$1.00 = 不亏不赚，<$1.00 = 有利润）
-  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '1.00'),
+  // 目标组合成本阈值（< $0.99 才有利润）
+  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.99'),
   
-  // 吃单阈值：低于此价格视为便宜，优先吃单（放宽到 $0.55）
-  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.55'),
+  // Taker配对阈值：用于失衡时Taker补单的最高价（不是入场阈值）
+  TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.65'),
   
   // ========== 价格范围（放宽以适应市场波动） ==========
   // Up 和 Down 是互补的：Up 便宜时 Down 贵，反之亦然
@@ -39,8 +41,8 @@ export const CONFIG = {
   DOWN_PRICE_MAX: 0.80, // Down 最高（当 Up < $0.20 时，Down 可能 > $0.75）
   
   // ========== 挂单参数 ==========
-  // 挂单间隔 (毫秒)
-  MAKER_INTERVAL_MS: parseInt(process.env.MAKER_INTERVAL_MS || '3000'),
+  // 扫描间隔 (毫秒) - 5ms 极速扫描
+  MAKER_INTERVAL_MS: parseInt(process.env.MAKER_INTERVAL_MS || '5'),
   
   // 单笔挂单金额 (USD)
   MAKER_ORDER_SIZE_USD: parseFloat(process.env.MAKER_ORDER_SIZE_USD || '10'),
