@@ -234,3 +234,4 @@ export const getWalletAddress = (): string => {
   const wallet = getWallet();
   return CONFIG.PROXY_WALLET || wallet.address;
 };
+

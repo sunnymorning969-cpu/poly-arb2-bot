@@ -16,7 +16,7 @@ const question = (prompt: string): Promise<string> => {
 const setup = async () => {
   console.log('\n');
   console.log('═'.repeat(60));
-  console.log('  🎯 同池套利机器人 - 配置向导');
+  console.log('  🎯 挂单套利机器人 - 配置向导');
   console.log('═'.repeat(60));
   console.log('\n');
   
@@ -39,39 +39,18 @@ const setup = async () => {
   // 钱包配置
   console.log('━━━ 钱包配置 ━━━');
   const privateKey = await question(`私钥 [${existingEnv.PRIVATE_KEY ? '已配置' : '未配置'}]: `) || existingEnv.PRIVATE_KEY || '';
-  const proxyWallet = await question(`代理钱包地址 [${existingEnv.PROXY_WALLET || '无'}]: `) || existingEnv.PROXY_WALLET || '';
+  const proxyWallet = await question(`代理钱包地址 (没有直接回车) [${existingEnv.PROXY_WALLET || '无'}]: `) || existingEnv.PROXY_WALLET || '';
   
   // 模式选择
   console.log('\n━━━ 运行模式 ━━━');
-  const simMode = await question('模拟模式? (1=是, 0=否) [1]: ') || '1';
+  const simMode = await question('模拟模式? (1=模拟, 0=实盘) [1]: ') || '1';
   const simulationMode = simMode !== '0';
   
-  // 交易参数
-  console.log('\n━━━ 交易参数 ━━━');
-  const maxCost = await question(`最大同池成本阈值 (建议 0.99-0.995) [0.995]: `) || '0.995';
-  const maxOrder = await question(`单笔订单上限 (USD) [10]: `) || '10';
-  const cooldown = await question(`交易冷却时间 (毫秒) [2000]: `) || '2000';
-  
-  // 市场开关
-  console.log('\n━━━ 市场开关 ━━━');
-  const enable15m = await question('开启15分钟场? (1=是, 0=否) [1]: ') || '1';
-  const enable1h = await question('开启1小时场? (1=是, 0=否) [1]: ') || '1';
-  
-  // 策略选择
-  console.log('\n━━━ 策略选择 ━━━');
-  console.log('⚠️  跨池套利有方向风险，建议关闭');
-  const enableCross = await question('开启跨池套利? (1=是, 0=否) [0]: ') || '0';
-  
-  console.log('\n━━━ 挂单策略 (推荐) ━━━');
-  console.log('💡 挂单策略可以主动创造套利机会');
-  const enableMaker = await question('开启挂单策略? (1=是, 0=否) [1]: ') || '1';
-  
-  let makerOrderSize = '5';
-  let makerMaxImbalance = '20';
-  if (enableMaker === '1') {
-    makerOrderSize = await question('单笔挂单金额 (USD) [5]: ') || '5';
-    makerMaxImbalance = await question('最大仓位失衡 (shares) [20]: ') || '20';
-  }
+  // 挂单策略参数
+  console.log('\n━━━ 挂单策略参数 ━━━');
+  const maxCost = await question(`最大成本阈值 (Up+Down < 此值才挂单) [0.995]: `) || '0.995';
+  const makerOrderSize = await question('单笔挂单金额 (USD) [5]: ') || '5';
+  const makerMaxImbalance = await question('最大仓位失衡 (超过则补单) [20]: ') || '20';
   
   // 生成配置
   const envContent = `# ========== 钱包配置 ==========
@@ -79,39 +58,39 @@ PRIVATE_KEY=${privateKey}
 PROXY_WALLET=${proxyWallet}
 
 # ========== Telegram 配置 ==========
-TELEGRAM_BOT_TOKEN=7698365045:AAGaPd7zLHdb4Ky7Tw0NobpcRCpNKWk-648
-TELEGRAM_GROUP_ID=@rickyhutest
+TELEGRAM_BOT_TOKEN=${existingEnv.TELEGRAM_BOT_TOKEN || '7698365045:AAGaPd7zLHdb4Ky7Tw0NobpcRCpNKWk-648'}
+TELEGRAM_GROUP_ID=${existingEnv.TELEGRAM_GROUP_ID || '@rickyhutest'}
 
 # ========== 运行模式 ==========
 SIMULATION_MODE=${simulationMode}
 
-# ========== 交易参数 ==========
-# 最大同池成本阈值 (Up+Down 必须小于此值)
+# ========== 核心参数 ==========
+# 最大成本阈值 (Up+Down 必须小于此值)
 MAX_SAME_POOL_COST=${maxCost}
 
-# 单笔订单上限 (USD)
-MAX_ORDER_SIZE_USD=${maxOrder}
-
-# 交易冷却时间 (毫秒)
-TRADE_COOLDOWN_MS=${cooldown}
-
 # ========== 市场开关 ==========
-ENABLE_15MIN=${enable15m}
-ENABLE_1HR=${enable1h}
+# 15分钟场 (推荐)
+ENABLE_15MIN=1
+# 1小时场 (可选)
+ENABLE_1HR=0
 
 # ========== 策略开关 ==========
-# 跨池套利有方向风险，建议关闭 (0=关闭, 1=开启)
-ENABLE_CROSS_POOL=${enableCross}
+# 挂单策略 (推荐开启)
+ENABLE_MAKER=1
+# 跨池套利 (有风险，默认关闭)
+ENABLE_CROSS_POOL=0
 
-# ========== 挂单策略 ==========
-# 启用挂单策略 (0=关闭, 1=开启)
-ENABLE_MAKER=${enableMaker}
-
+# ========== 挂单参数 ==========
 # 单笔挂单金额 (USD)
 MAKER_ORDER_SIZE_USD=${makerOrderSize}
-
 # 最大仓位失衡 (超过此值会强制平衡)
 MAKER_MAX_IMBALANCE=${makerMaxImbalance}
+# 挂单间隔 (毫秒)
+MAKER_INTERVAL_MS=5000
+
+# ========== 吃单参数 (备用) ==========
+MAX_ORDER_SIZE_USD=10
+TRADE_COOLDOWN_MS=2000
 `;
 
   // 写入文件
@@ -121,8 +100,12 @@ MAKER_MAX_IMBALANCE=${makerMaxImbalance}
   console.log('═'.repeat(60));
   console.log('  ✅ 配置完成！');
   console.log('═'.repeat(60));
-  console.log('\n配置已保存到 .env 文件\n');
-  console.log('运行 npm run dev 启动机器人\n');
+  console.log('\n📝 配置摘要:');
+  console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
+  console.log(`   成本阈值: $${maxCost}`);
+  console.log(`   挂单金额: $${makerOrderSize}`);
+  console.log(`   最大失衡: ${makerMaxImbalance} shares`);
+  console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();
 };

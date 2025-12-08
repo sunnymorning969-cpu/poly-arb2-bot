@@ -168,3 +168,4 @@ ${CONFIG.SIMULATION_MODE ? '⚠️ <i>模拟模式</i>' : ''}
 
   await sendTelegramMessage(message, false);
 };
+

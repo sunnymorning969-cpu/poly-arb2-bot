@@ -246,3 +246,4 @@ export const closeWebSocket = () => {
   }
   isConnected = false;
 };
+

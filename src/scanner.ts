@@ -392,3 +392,4 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
 
 export const getMarkets = (): MarketInfo[] => cachedMarkets;
 export { getActiveBookCount };
+
