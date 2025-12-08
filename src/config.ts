@@ -30,13 +30,13 @@ export const CONFIG = {
   TAKER_THRESHOLD: parseFloat(process.env.TAKER_THRESHOLD || '0.48'),
   
   // ========== 价格范围（基于数据分析） ==========
-  // Up 交易 74% 在 $0.50-$0.90，主要集中在 $0.50-$0.75
-  UP_PRICE_MIN: 0.50,  // Up 挂单最低价格
-  UP_PRICE_MAX: 0.75,  // Up 挂单最高价格（超过此价格另一边难以对冲）
+  // Up 交易 74% 在 $0.50-$0.90
+  UP_PRICE_MIN: 0.45,  // Up 挂单最低价格
+  UP_PRICE_MAX: 0.85,  // Up 挂单最高价格（放宽以捕捉更多机会）
   
-  // Down 交易 58% 在 $0.20-$0.50，主要集中在 $0.25-$0.50
-  DOWN_PRICE_MIN: 0.25,  // Down 挂单最低价格
-  DOWN_PRICE_MAX: 0.50,  // Down 挂单最高价格
+  // Down 交易 58% 在 $0.20-$0.50
+  DOWN_PRICE_MIN: 0.15,  // Down 挂单最低价格（放宽）
+  DOWN_PRICE_MAX: 0.55,  // Down 挂单最高价格（放宽）
   
   // ========== 挂单参数 ==========
   // 挂单间隔 (毫秒)

@@ -118,62 +118,74 @@ const makeTradeDecision = (
     }
   }
   
-  // 情况2：单边吃单机会
+  // 情况2：单边吃单机会 - 只在另一边也有机会时才执行（避免单边造成失衡）
   if (upTakerOpportunity) {
-    // Up 便宜，吃 Up，然后在合理价格挂单 Down
-    upAction = 'taker';
-    upPrice = upBestAsk;
-    
-    // 计算 Down 的目标价格（确保组合成本 < MAX_COMBINED_COST）
+    // Up 便宜，检查 Down 是否也有合理机会
     const maxDownPrice = CONFIG.MAX_COMBINED_COST - upBestAsk - 0.01;
     
-    // Down 挂单价格：在 bestBid 上方，但不超过目标价
-    downPrice = Math.min(downBestBid + CONFIG.MAKER_OFFSET, maxDownPrice);
-    downPrice = Math.round(downPrice * 100) / 100;
-    
-    // 检查 Down 价格是否合理
-    if (downPrice >= CONFIG.DOWN_PRICE_MIN && downPrice <= CONFIG.DOWN_PRICE_MAX && downPrice > downBestBid) {
-      downAction = 'maker';
-      reason = `Up 吃单 $${upPrice.toFixed(3)}，Down 挂单 $${downPrice.toFixed(3)}`;
-    } else if (downBestAsk <= maxDownPrice) {
-      // Down 市价也可以
+    // 检查 Down 是否可以直接吃单
+    if (downBestAsk <= maxDownPrice) {
+      // 双边都可以吃单
+      upAction = 'taker';
       downAction = 'taker';
+      upPrice = upBestAsk;
       downPrice = downBestAsk;
-      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)}`;
-    } else {
-      reason = `Up 吃单 $${upPrice.toFixed(3)}，等待 Down 机会`;
+      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${(upPrice + downPrice).toFixed(3)}`;
+      return { upAction, downAction, upPrice, downPrice, reason };
     }
-    return { upAction, downAction, upPrice, downPrice, reason };
+    
+    // 检查 Down 是否可以挂单
+    const potentialDownPrice = Math.min(downBestBid + CONFIG.MAKER_OFFSET, maxDownPrice);
+    const roundedDownPrice = Math.round(potentialDownPrice * 100) / 100;
+    
+    if (roundedDownPrice >= CONFIG.DOWN_PRICE_MIN && roundedDownPrice <= CONFIG.DOWN_PRICE_MAX && roundedDownPrice > downBestBid) {
+      upAction = 'taker';
+      downAction = 'maker';
+      upPrice = upBestAsk;
+      downPrice = roundedDownPrice;
+      reason = `Up 吃单 $${upPrice.toFixed(3)}，Down 挂单 $${downPrice.toFixed(3)}`;
+      return { upAction, downAction, upPrice, downPrice, reason };
+    }
+    
+    // Down 无法配对，跳过避免单边失衡
+    reason = `Up 价格好 $${upBestAsk.toFixed(3)} 但 Down 无合适机会，跳过`;
   }
   
   if (downTakerOpportunity) {
-    // Down 便宜，吃 Down，然后在合理价格挂单 Up
-    downAction = 'taker';
-    downPrice = downBestAsk;
-    
-    // 计算 Up 的目标价格
+    // Down 便宜，检查 Up 是否也有合理机会
     const maxUpPrice = CONFIG.MAX_COMBINED_COST - downBestAsk - 0.01;
     
-    // Up 挂单价格
-    upPrice = Math.min(upBestBid + CONFIG.MAKER_OFFSET, maxUpPrice);
-    upPrice = Math.round(upPrice * 100) / 100;
-    
-    // 检查 Up 价格是否合理
-    if (upPrice >= CONFIG.UP_PRICE_MIN && upPrice <= CONFIG.UP_PRICE_MAX && upPrice > upBestBid) {
-      upAction = 'maker';
-      reason = `Down 吃单 $${downPrice.toFixed(3)}，Up 挂单 $${upPrice.toFixed(3)}`;
-    } else if (upBestAsk <= maxUpPrice) {
+    // 检查 Up 是否可以直接吃单
+    if (upBestAsk <= maxUpPrice) {
+      // 双边都可以吃单
       upAction = 'taker';
+      downAction = 'taker';
       upPrice = upBestAsk;
-      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)}`;
-    } else {
-      reason = `Down 吃单 $${downPrice.toFixed(3)}，等待 Up 机会`;
+      downPrice = downBestAsk;
+      reason = `双边吃单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${(upPrice + downPrice).toFixed(3)}`;
+      return { upAction, downAction, upPrice, downPrice, reason };
     }
-    return { upAction, downAction, upPrice, downPrice, reason };
+    
+    // 检查 Up 是否可以挂单
+    const potentialUpPrice = Math.min(upBestBid + CONFIG.MAKER_OFFSET, maxUpPrice);
+    const roundedUpPrice = Math.round(potentialUpPrice * 100) / 100;
+    
+    if (roundedUpPrice >= CONFIG.UP_PRICE_MIN && roundedUpPrice <= CONFIG.UP_PRICE_MAX && roundedUpPrice > upBestBid) {
+      upAction = 'maker';
+      downAction = 'taker';
+      upPrice = roundedUpPrice;
+      downPrice = downBestAsk;
+      reason = `Down 吃单 $${downPrice.toFixed(3)}，Up 挂单 $${upPrice.toFixed(3)}`;
+      return { upAction, downAction, upPrice, downPrice, reason };
+    }
+    
+    // Up 无法配对，跳过避免单边失衡
+    reason = `Down 价格好 $${downBestAsk.toFixed(3)} 但 Up 无合适机会，跳过`;
   }
   
   // 情况3：没有吃单机会，检查挂单机会
   // 在 bestBid 上方挂单，等待成交
+  // 注意：必须两边都可以挂单才执行，避免单边失衡
   const potentialUpPrice = Math.round((upBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
   const potentialDownPrice = Math.round((downBestBid + CONFIG.MAKER_OFFSET) * 100) / 100;
   const combinedCost = potentialUpPrice + potentialDownPrice;
@@ -184,22 +196,20 @@ const makeTradeDecision = (
     const upInRange = potentialUpPrice >= CONFIG.UP_PRICE_MIN && potentialUpPrice <= CONFIG.UP_PRICE_MAX;
     const downInRange = potentialDownPrice >= CONFIG.DOWN_PRICE_MIN && potentialDownPrice <= CONFIG.DOWN_PRICE_MAX;
     
+    // 只有双边都在范围内才挂单，避免单边失衡
     if (upInRange && downInRange) {
       upAction = 'maker';
       downAction = 'maker';
       upPrice = potentialUpPrice;
       downPrice = potentialDownPrice;
       reason = `双边挂单 Up $${upPrice.toFixed(3)} + Down $${downPrice.toFixed(3)} = $${combinedCost.toFixed(3)}`;
-    } else if (upInRange) {
-      upAction = 'maker';
-      upPrice = potentialUpPrice;
-      reason = `Up 挂单 $${upPrice.toFixed(3)}，Down 价格 $${potentialDownPrice.toFixed(3)} 超出范围`;
-    } else if (downInRange) {
-      downAction = 'maker';
-      downPrice = potentialDownPrice;
-      reason = `Down 挂单 $${downPrice.toFixed(3)}，Up 价格 $${potentialUpPrice.toFixed(3)} 超出范围`;
-    } else {
+    } else if (!upInRange && !downInRange) {
       reason = `价格超出范围: Up $${potentialUpPrice.toFixed(3)} Down $${potentialDownPrice.toFixed(3)}`;
+    } else {
+      // 单边在范围内，跳过避免失衡
+      reason = upInRange 
+        ? `Up $${potentialUpPrice.toFixed(3)} 可挂但 Down $${potentialDownPrice.toFixed(3)} 超范围，跳过`
+        : `Down $${potentialDownPrice.toFixed(3)} 可挂但 Up $${potentialUpPrice.toFixed(3)} 超范围，跳过`;
     }
   } else {
     reason = `组合成本 $${combinedCost.toFixed(3)} > $${CONFIG.MAX_COMBINED_COST}`;
@@ -229,19 +239,51 @@ const checkAndBalance = async (slug: string, stats: CycleStats, market: any): Pr
       // 需要补 Down
       const downBook = getOrderBook(market.downTokenId);
       if (downBook && downBook.bestAsk > 0) {
-        const fillCost = Math.abs(diff) * downBook.bestAsk;
-        stats.downFilled += Math.abs(diff);
+        const sharesToFill = Math.abs(diff);
+        const fillCost = sharesToFill * downBook.bestAsk;
+        stats.downFilled += sharesToFill;
         stats.downCost += fillCost;
-        Logger.success(`   [模拟] 市价补单 ${Math.abs(diff)} Down @ $${downBook.bestAsk.toFixed(3)}`);
+        
+        // 同步到 positions
+        addPosition({
+          slug: market.slug,
+          asset: market.asset,
+          timeGroup: market.timeGroup,
+          upShares: 0,
+          downShares: sharesToFill,
+          upCost: 0,
+          downCost: fillCost,
+          totalCost: fillCost,
+          timestamp: Date.now(),
+          endTime: market.endTime,
+        });
+        
+        Logger.success(`   [模拟] 市价补单 ${sharesToFill} Down @ $${downBook.bestAsk.toFixed(3)}`);
       }
     } else {
       // 需要补 Up
       const upBook = getOrderBook(market.upTokenId);
       if (upBook && upBook.bestAsk > 0) {
-        const fillCost = Math.abs(diff) * upBook.bestAsk;
-        stats.upFilled += Math.abs(diff);
+        const sharesToFill = Math.abs(diff);
+        const fillCost = sharesToFill * upBook.bestAsk;
+        stats.upFilled += sharesToFill;
         stats.upCost += fillCost;
-        Logger.success(`   [模拟] 市价补单 ${Math.abs(diff)} Up @ $${upBook.bestAsk.toFixed(3)}`);
+        
+        // 同步到 positions
+        addPosition({
+          slug: market.slug,
+          asset: market.asset,
+          timeGroup: market.timeGroup,
+          upShares: sharesToFill,
+          downShares: 0,
+          upCost: fillCost,
+          downCost: 0,
+          totalCost: fillCost,
+          timestamp: Date.now(),
+          endTime: market.endTime,
+        });
+        
+        Logger.success(`   [模拟] 市价补单 ${sharesToFill} Up @ $${upBook.bestAsk.toFixed(3)}`);
       }
     }
     return;

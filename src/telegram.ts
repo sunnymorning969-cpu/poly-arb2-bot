@@ -46,19 +46,21 @@ const processQueue = async () => {
 // 发送启动通知
 export const notifyBotStarted = async () => {
   const message = `
-🚀 <b>【进化版】套利机器人启动</b>
+🚀 <b>【混合策略】套利机器人启动</b>
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
-   • 最大成本阈值: $${CONFIG.MAX_SAME_POOL_COST}
-   • 单笔上限: $${CONFIG.MAX_ORDER_SIZE_USD}
+   • 目标组合成本: ≤ $${CONFIG.MAX_COMBINED_COST}
+   • 吃单阈值: < $${CONFIG.TAKER_THRESHOLD}
+   • 单笔金额: $${CONFIG.MAKER_ORDER_SIZE_USD}
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
-   • 跨池套利: ${CONFIG.ENABLE_CROSS_POOL ? '⚠️ 开启' : '❌ 关闭'}
 
-📌 <b>策略说明:</b>
-   ${CONFIG.ENABLE_MAKER ? '📝 挂单策略 (主动创造机会)' : CONFIG.ENABLE_CROSS_POOL ? '同池优先 + 跨池优化' : '纯同池套利'}
-   ${CONFIG.ENABLE_MAKER ? `挂单金额: $${CONFIG.MAKER_ORDER_SIZE_USD} | 最大失衡: ${CONFIG.MAKER_MAX_IMBALANCE}` : `只交易 Up+Down < $${CONFIG.MAX_SAME_POOL_COST} 的机会`}
+📌 <b>策略说明 (基于15000笔数据分析):</b>
+   • 价格 < $${CONFIG.TAKER_THRESHOLD} → 直接吃单
+   • Up $${CONFIG.UP_PRICE_MIN}-$${CONFIG.UP_PRICE_MAX} → 挂单
+   • Down $${CONFIG.DOWN_PRICE_MIN}-$${CONFIG.DOWN_PRICE_MAX} → 挂单
+   • 最大仓位失衡: ${CONFIG.MAKER_MAX_IMBALANCE} shares
 `.trim();
 
   await sendTelegramMessage(message, true);
