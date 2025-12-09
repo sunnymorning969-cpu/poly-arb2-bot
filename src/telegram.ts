@@ -51,8 +51,7 @@ export const notifyBotStarted = async () => {
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
    • 最大组合成本: $${CONFIG.MAX_COMBINED_COST}
-   • 单次吃单: $${CONFIG.ORDER_SIZE_USD}
-   • 单次下单上限: $${CONFIG.MAX_ORDER_AMOUNT_USD}
+   • 单次吃单上限: $${CONFIG.ORDER_SIZE_USD}
    • 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}
    • 15分钟场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_15MIN * 100).toFixed(0)}% (实际最大12.5%)
    • 1小时场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_1HR * 100).toFixed(0)}% (实际最大1.3%)

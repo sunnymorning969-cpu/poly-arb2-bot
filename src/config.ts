@@ -17,11 +17,8 @@ export const CONFIG = {
   // 最大组合成本阈值 (avgUp + avgDown 必须小于此值)
   MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.98'),
   
-  // 单次吃单金额 (USD)
+  // 单次吃单金额/上限 (USD) - 防止单笔过大
   ORDER_SIZE_USD: parseFloat(process.env.ORDER_SIZE_USD || '20'),
-  
-  // 单次下单最大金额 (USD) - 防止因深度过大下单过多
-  MAX_ORDER_AMOUNT_USD: parseFloat(process.env.MAX_ORDER_AMOUNT_USD || '100'),
   
   // 单事件最大投入 (USD) - 风控上限
   MAX_EVENT_INVESTMENT_USD: parseFloat(process.env.MAX_EVENT_INVESTMENT_USD || '5000'),

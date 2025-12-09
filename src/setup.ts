@@ -56,8 +56,7 @@ const setup = async () => {
   // 核心参数
   console.log('\n━━━ 核心参数 ━━━');
   const maxCost = await question('最大组合成本 (avgUp+avgDown < 此值) [0.98]: ') || '0.98';
-  const orderSize = await question('单次吃单金额 (USD) [20]: ') || '20';
-  const maxOrderAmount = await question('单次下单最大金额 (USD) [100]: ') || '100';
+  const orderSize = await question('单次吃单金额/上限 (USD) [20]: ') || '20';
   const maxInvestment = await question('单事件最大投入 (USD) [5000]: ') || '5000';
   const maxImbalance15min = await question('15分钟场最大不平衡 (0.20 = 20%) [0.20]: ') || '0.20';
   const maxImbalance1hr = await question('1小时场最大不平衡 (0.05 = 5%) [0.05]: ') || '0.05';
@@ -83,11 +82,8 @@ SIMULATION_MODE=${simulationMode}
 # 最大组合成本 (avgUp + avgDown < 此值才买入)
 MAX_COMBINED_COST=${maxCost}
 
-# 单次吃单金额 (USD)
+# 单次吃单金额/上限 (USD) - 防止单笔过大
 ORDER_SIZE_USD=${orderSize}
-
-# 单次下单最大金额 (USD) - 防止因深度过大下单过多
-MAX_ORDER_AMOUNT_USD=${maxOrderAmount}
 
 # 单事件最大投入 (USD)
 MAX_EVENT_INVESTMENT_USD=${maxInvestment}
@@ -111,8 +107,7 @@ ENABLE_1HR=${enable1hr === '1' ? '1' : '0'}
   console.log('\n📝 配置摘要:');
   console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
   console.log(`   最大组合成本: $${maxCost}`);
-  console.log(`   单次吃单: $${orderSize}`);
-  console.log(`   单次下单上限: $${maxOrderAmount}`);
+  console.log(`   单次吃单上限: $${orderSize}`);
   console.log(`   单事件上限: $${maxInvestment}`);
   console.log(`   15分钟场不平衡: ${(parseFloat(maxImbalance15min) * 100).toFixed(0)}% (实际最大12.5%)`);
   console.log(`   1小时场不平衡: ${(parseFloat(maxImbalance1hr) * 100).toFixed(0)}% (实际最大1.3%)`);

@@ -135,7 +135,6 @@ export const runMakerStrategy = async (): Promise<void> => {
         if (shouldBuy(needSide, needPrice, state)) {
           const orderBudget = Math.min(
             CONFIG.ORDER_SIZE_USD,
-            CONFIG.MAX_ORDER_AMOUNT_USD,
             CONFIG.MAX_EVENT_INVESTMENT_USD - totalInvestment
           );
           const shares = Math.floor(orderBudget / needPrice);
@@ -182,7 +181,6 @@ export const runMakerStrategy = async (): Promise<void> => {
     if (buyUp) {
       const orderBudget = Math.min(
         CONFIG.ORDER_SIZE_USD,
-        CONFIG.MAX_ORDER_AMOUNT_USD,
         CONFIG.MAX_EVENT_INVESTMENT_USD - totalInvestment
       );
       const shares = Math.floor(orderBudget / upBook.bestAsk);
@@ -193,7 +191,6 @@ export const runMakerStrategy = async (): Promise<void> => {
     } else if (buyDown) {
       const orderBudget = Math.min(
         CONFIG.ORDER_SIZE_USD,
-        CONFIG.MAX_ORDER_AMOUNT_USD,
         CONFIG.MAX_EVENT_INVESTMENT_USD - totalInvestment
       );
       const shares = Math.floor(orderBudget / downBook.bestAsk);
