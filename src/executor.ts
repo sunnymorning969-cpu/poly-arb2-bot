@@ -5,6 +5,10 @@ import { initClient } from './client';
 import { ArbitrageOpportunity } from './scanner';
 import { addPosition } from './positions';
 
+// 本地常量（不再从 config 读取）
+const TRADE_COOLDOWN_MS = 1000; // 1秒冷却
+const MAX_ORDER_SIZE_USD = CONFIG.MAKER_ORDER_SIZE_USD; // 复用挂单金额
+
 // 上次交易时间
 let lastTradeTime = 0;
 
@@ -15,14 +19,14 @@ export const executeArbitrage = async (
   
   // 检查冷却时间
   const now = Date.now();
-  if (now - lastTradeTime < CONFIG.TRADE_COOLDOWN_MS) {
+  if (now - lastTradeTime < TRADE_COOLDOWN_MS) {
     return { success: false, upFilled: 0, downFilled: 0, totalCost: 0 };
   }
   
   const { type, timeGroup, upMarket, downMarket, upAskPrice, downAskPrice, maxShares } = opportunity;
   
   // 计算下单数量
-  const maxByFunds = CONFIG.MAX_ORDER_SIZE_USD / (upAskPrice + downAskPrice);
+  const maxByFunds = MAX_ORDER_SIZE_USD / (upAskPrice + downAskPrice);
   const shares = Math.floor(Math.min(maxShares, maxByFunds));
   
   if (shares < 1) {

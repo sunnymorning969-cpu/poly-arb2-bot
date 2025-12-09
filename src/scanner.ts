@@ -336,54 +336,6 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
       }
     }
     
-    // 2. 跨池套利（默认关闭，有方向风险）
-    if (CONFIG.ENABLE_CROSS_POOL && marketData.length >= 2) {
-      let cheapestUp = marketData[0];
-      let cheapestDown = marketData[0];
-      
-      for (const data of marketData) {
-        if (data.upAsk < cheapestUp.upAsk) cheapestUp = data;
-        if (data.downAsk < cheapestDown.downAsk) cheapestDown = data;
-      }
-      
-      if (cheapestUp.market.asset !== cheapestDown.market.asset) {
-        const combinedCost = cheapestUp.upAsk + cheapestDown.downAsk;
-        
-        if (combinedCost < CONFIG.MAX_SAME_POOL_COST) {
-          opportunities.push({
-            type: 'cross_pool',
-            timeGroup: timeGroup as '15min' | '1hr',
-            upMarket: cheapestUp.market,
-            upAskPrice: cheapestUp.upAsk,
-            upDepth: cheapestUp.upDepth,
-            downMarket: cheapestDown.market,
-            downAskPrice: cheapestDown.downAsk,
-            downDepth: cheapestDown.downDepth,
-            combinedCost,
-            profitPercent: (1 - combinedCost) * 100,
-            maxShares: Math.min(cheapestUp.upDepth, cheapestDown.downDepth),
-          });
-        }
-        
-        // 反向跨池
-        const reverseCost = cheapestDown.upAsk + cheapestUp.downAsk;
-        if (reverseCost < CONFIG.MAX_SAME_POOL_COST) {
-          opportunities.push({
-            type: 'cross_pool',
-            timeGroup: timeGroup as '15min' | '1hr',
-            upMarket: cheapestDown.market,
-            upAskPrice: cheapestDown.upAsk,
-            upDepth: cheapestDown.upDepth,
-            downMarket: cheapestUp.market,
-            downAskPrice: cheapestUp.downAsk,
-            downDepth: cheapestUp.downDepth,
-            combinedCost: reverseCost,
-            profitPercent: (1 - reverseCost) * 100,
-            maxShares: Math.min(cheapestDown.upDepth, cheapestUp.downDepth),
-          });
-        }
-      }
-    }
   }
   
   opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
