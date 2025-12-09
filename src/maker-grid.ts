@@ -198,14 +198,13 @@ const checkGridOrderFills = (market: any, state: GridMarketState): void => {
     }
     
     // 模拟成交逻辑：
-    // UP单：如果当前bestBid >= 挂单价格，有概率成交
-    // DOWN单：同理
-    const currentBestBid = order.side === 'up' ? upBook.bestBid : downBook.bestBid;
+    // 我们挂的是买单(BUY)，当市场卖单价格 <= 我们的买单价格时，会成交
+    const currentBestAsk = order.side === 'up' ? upBook.bestAsk : downBook.bestAsk;
     
-    if (currentBestBid >= order.price) {
-      // 挂单价格被市场价格吃掉，模拟成交
+    if (order.price >= currentBestAsk) {
+      // 市场价格降到挂单价格以下，模拟成交
       const fillChance = Math.random();
-      if (fillChance > 0.7) {  // 30%概率成交
+      if (fillChance > 0.85) {  // 15%概率成交（网格成交率较低）
         order.filled = true;
         
         // 更新持仓
@@ -304,6 +303,55 @@ export const runGridStrategy = async (): Promise<void> => {
   if (shouldLog) {
     lastLogTime = now;
   }
+};
+
+/**
+ * 获取网格统计信息
+ */
+export const getGridStats = (): {
+  totalUp: number;
+  totalUpCost: number;
+  totalDown: number;
+  totalDownCost: number;
+  avgCost: number;
+  totalPendingOrders: number;
+  totalFilledOrders: number;
+} => {
+  let totalUp = 0;
+  let totalUpCost = 0;
+  let totalDown = 0;
+  let totalDownCost = 0;
+  let totalPendingOrders = 0;
+  let totalFilledOrders = 0;
+  
+  for (const state of marketStates.values()) {
+    totalUp += state.upShares;
+    totalUpCost += state.upCost;
+    totalDown += state.downShares;
+    totalDownCost += state.downCost;
+    
+    for (const order of state.gridOrders) {
+      if (order.filled) {
+        totalFilledOrders++;
+      } else {
+        totalPendingOrders++;
+      }
+    }
+  }
+  
+  const avgUp = totalUp > 0 ? totalUpCost / totalUp : 0;
+  const avgDown = totalDown > 0 ? totalDownCost / totalDown : 0;
+  const avgCost = avgUp + avgDown;
+  
+  return {
+    totalUp,
+    totalUpCost,
+    totalDown,
+    totalDownCost,
+    avgCost,
+    totalPendingOrders,
+    totalFilledOrders,
+  };
 };
 
 /**

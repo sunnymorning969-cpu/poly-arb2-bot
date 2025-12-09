@@ -6,7 +6,7 @@ import { getPositionCount, getTotalCost, getExpectedProfit, getStats, checkAndSe
 import { notifyBotStarted, notifySettlement, notifyRunningStats } from './telegram';
 import { closeWebSocket, getOrderBook } from './orderbook-ws';
 import { runMakerStrategy, getMakerStats, cancelAllOrders } from './maker';
-import { runGridStrategy, cancelAllGridOrders } from './maker-grid';
+import { runGridStrategy, getGridStats, cancelAllGridOrders } from './maker-grid';
 
 const startTime = Date.now();
 
@@ -117,11 +117,21 @@ const mainLoop = async () => {
         Logger.info(`📊 WS: ${bookCount} books | 仓位: ${posCount} | 结算: ${stats.totalSettled} | 盈亏: ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}${balanceInfo}`);
         
         // 显示总持仓统计
-        const makerStats = getMakerStats();
-        if (makerStats.totalUp > 0 || makerStats.totalDown > 0) {
-          const diff = makerStats.totalUp - makerStats.totalDown;
-          const imbalanceRatio = (Math.abs(diff) / (makerStats.totalUp + makerStats.totalDown)) * 100;
-          Logger.info(`   📝 总持仓: UP ${makerStats.totalUp.toFixed(0)} @ $${(makerStats.totalUpCost / makerStats.totalUp).toFixed(3)} | DOWN ${makerStats.totalDown.toFixed(0)} @ $${(makerStats.totalDownCost / makerStats.totalDown).toFixed(3)} | 组合: $${makerStats.avgCost.toFixed(3)} | 不平衡: ${diff > 0 ? '+' : ''}${diff.toFixed(0)} (${imbalanceRatio.toFixed(1)}%)`);
+        if (CONFIG.GRID_MODE) {
+          const gridStats = getGridStats();
+          if (gridStats.totalUp > 0 || gridStats.totalDown > 0) {
+            const diff = gridStats.totalUp - gridStats.totalDown;
+            const imbalanceRatio = (Math.abs(diff) / (gridStats.totalUp + gridStats.totalDown)) * 100;
+            Logger.info(`   📝 总持仓: UP ${gridStats.totalUp.toFixed(0)} @ $${(gridStats.totalUpCost / gridStats.totalUp).toFixed(3)} | DOWN ${gridStats.totalDown.toFixed(0)} @ $${(gridStats.totalDownCost / gridStats.totalDown).toFixed(3)} | 组合: $${gridStats.avgCost.toFixed(3)} | 不平衡: ${diff > 0 ? '+' : ''}${diff.toFixed(0)} (${imbalanceRatio.toFixed(1)}%)`);
+            Logger.info(`   🌐 网格: 已成交 ${gridStats.totalFilledOrders} | 待成交 ${gridStats.totalPendingOrders}`);
+          }
+        } else {
+          const makerStats = getMakerStats();
+          if (makerStats.totalUp > 0 || makerStats.totalDown > 0) {
+            const diff = makerStats.totalUp - makerStats.totalDown;
+            const imbalanceRatio = (Math.abs(diff) / (makerStats.totalUp + makerStats.totalDown)) * 100;
+            Logger.info(`   📝 总持仓: UP ${makerStats.totalUp.toFixed(0)} @ $${(makerStats.totalUpCost / makerStats.totalUp).toFixed(3)} | DOWN ${makerStats.totalDown.toFixed(0)} @ $${(makerStats.totalDownCost / makerStats.totalDown).toFixed(3)} | 组合: $${makerStats.avgCost.toFixed(3)} | 不平衡: ${diff > 0 ? '+' : ''}${diff.toFixed(0)} (${imbalanceRatio.toFixed(1)}%)`);
+          }
         }
         
         // 显示当前市场价格（诊断）
