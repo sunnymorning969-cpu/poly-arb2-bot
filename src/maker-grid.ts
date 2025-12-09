@@ -217,7 +217,23 @@ const checkGridOrderFills = (market: any, state: GridMarketState): void => {
         }
         
         // 记录到positions
-        addPosition(market.slug, order.side, order.shares, order.price);
+        const upShares = order.side === 'up' ? order.shares : 0;
+        const upCost = order.side === 'up' ? order.shares * order.price : 0;
+        const downShares = order.side === 'down' ? order.shares : 0;
+        const downCost = order.side === 'down' ? order.shares * order.price : 0;
+        
+        addPosition({
+          slug: market.slug,
+          asset: market.asset,
+          timeGroup: market.timeGroup,
+          upShares,
+          downShares,
+          upCost,
+          downCost,
+          totalCost: upCost + downCost,
+          timestamp: Date.now(),
+          endTime: market.endTime,
+        });
         
         const combinedCost = (order.side === 'up' && order.pairOrderId)
           ? order.price + (state.gridOrders.find(o => o.orderId === order.pairOrderId)?.price || 0)
