@@ -312,7 +312,7 @@ export const runMakerStrategy = async (): Promise<void> => {
           const client = await initClient();
           for (const slot of state.slots) {
             if (slot.orderId) {
-              try { await client.cancelOrder(slot.orderId); } catch (e) {}
+              try { await client.cancelOrder({ orderID: slot.orderId }); } catch (e) {}
             }
           }
         }
@@ -526,7 +526,7 @@ export const cancelAllOrders = async (): Promise<void> => {
       for (const slot of state.slots) {
         if (slot.orderId && slot.shares - slot.filled > 0) {
           try {
-            await client.cancelOrder(slot.orderId);
+            await client.cancelOrder({ orderID: slot.orderId });
             Logger.info(`已取消订单: ${slot.orderId}`);
           } catch (e) {
             // 忽略取消失败
