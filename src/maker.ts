@@ -174,20 +174,34 @@ const placeLimitOrder = async (
  * 主策略函数（动态吃单）
  */
 export const runMakerStrategy = async (): Promise<void> => {
-  const now = Date.now();
-  const shouldLog = now - lastLogTime >= LOG_INTERVAL;
+  const loopStartTime = Date.now();
+  const shouldLog = loopStartTime - lastLogTime >= LOG_INTERVAL;
   
   const markets = getMarkets();
   
   for (const market of markets) {
+    // ========== 每个市场都重新获取当前时间 ==========
+    const now = Date.now();
+    
+    // ========== 检查交易冷却时间 ==========
+    // 1. 检查全局交易间隔
+    if (now - lastGlobalTradeTime < GLOBAL_TRADE_INTERVAL_MS) {
+      continue;  // 全局冷却中
+    }
+    
+    const state = getMarketState(market.slug);
+    
+    // 2. 检查单个市场冷却时间
+    if (now - state.lastTradeTime < MARKET_COOLDOWN_MS) {
+      continue;  // 该市场冷却中
+    }
+    
     const upBook = getOrderBook(market.upTokenId);
     const downBook = getOrderBook(market.downTokenId);
     
     if (!upBook || !downBook || upBook.bestAsk <= 0 || downBook.bestAsk <= 0) {
       continue;
     }
-    
-    const state = getMarketState(market.slug);
     
     // 检查是否接近结算时间
     const timeToEnd = market.endTime.getTime() - now;
@@ -302,7 +316,7 @@ export const runMakerStrategy = async (): Promise<void> => {
   }
   
   if (shouldLog) {
-    lastLogTime = now;
+    lastLogTime = loopStartTime;
   }
 };
 
