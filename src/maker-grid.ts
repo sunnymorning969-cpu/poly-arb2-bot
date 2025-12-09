@@ -147,8 +147,23 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
   const sharesPerLevel = CONFIG.GRID_SHARES_PER_LEVEL;
   const maxCombinedCost = CONFIG.MAX_COMBINED_COST;
   
+  // 获取当前市场价格
+  const upBook = getOrderBook(market.upTokenId);
+  const downBook = getOrderBook(market.downTokenId);
+  
+  if (!upBook || !downBook) {
+    Logger.error(`❌ 无法获取 ${market.asset} 的订单簿，跳过网格初始化`);
+    return;
+  }
+  
+  const currentUpPrice = (upBook.bestBid + upBook.bestAsk) / 2;
+  const currentDownPrice = (downBook.bestBid + downBook.bestAsk) / 2;
+  
+  Logger.info(`   💰 当前价格: UP $${currentUpPrice.toFixed(3)} | DOWN $${currentDownPrice.toFixed(3)}`);
+  
   let totalOrders = 0;
   let gridLevel = 1;  // 档位编号从1开始
+  let skippedOrders = 0;
   
   // 从0.01开始，到0.97结束（确保DOWN >= 0.015）
   for (let upPrice = 0.01; upPrice <= 0.97; upPrice += gridStep) {
@@ -159,11 +174,25 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
       continue;
     }
     
-    // 挂UP单（使用当前档位编号）
-    const upOrderId = await placeGridOrder(market, 'up', upPrice, sharesPerLevel, state, gridLevel);
+    // ⚠️ 关键修改：只挂低于当前市价的买单，避免立即成交
+    const shouldPlaceUp = upPrice < upBook.bestAsk;  // UP买单价 < UP最低卖价
+    const shouldPlaceDown = downPrice < downBook.bestAsk;  // DOWN买单价 < DOWN最低卖价
     
-    // 挂配对的DOWN单（使用同一档位编号）
-    const downOrderId = await placeGridOrder(market, 'down', downPrice, sharesPerLevel, state, gridLevel, upOrderId || undefined);
+    if (!shouldPlaceUp && !shouldPlaceDown) {
+      // 两边都不能挂，跳过这一档
+      skippedOrders += 2;
+      continue;
+    }
+    
+    // 挂UP单（只在价格合适时）
+    const upOrderId = shouldPlaceUp 
+      ? await placeGridOrder(market, 'up', upPrice, sharesPerLevel, state, gridLevel)
+      : null;
+    
+    // 挂配对的DOWN单（只在价格合适时）
+    const downOrderId = shouldPlaceDown
+      ? await placeGridOrder(market, 'down', downPrice, sharesPerLevel, state, gridLevel, upOrderId || undefined)
+      : null;
     
     // 设置配对关系
     if (upOrderId && downOrderId) {
@@ -173,7 +202,8 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
       }
     }
     
-    totalOrders += 2;
+    if (upOrderId) totalOrders++;
+    if (downOrderId) totalOrders++;
     gridLevel++;  // 下一档
     
     // 每10档休息一下，避免API限流
@@ -193,7 +223,7 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
   const minDown = Math.min(...downPrices);
   const maxDown = Math.max(...downPrices);
   
-  Logger.success(`✅ 网格初始化完成 ${market.asset}: 共挂 ${totalOrders} 单 (${totalOrders/2} 档)`);
+  Logger.success(`✅ 网格初始化完成 ${market.asset}: 共挂 ${totalOrders} 单 (跳过 ${skippedOrders} 单会立即成交的)`);
   Logger.info(`   📊 UP档位: $${minUp.toFixed(3)} - $${maxUp.toFixed(3)} | DOWN档位: $${minDown.toFixed(3)} - $${maxDown.toFixed(3)}`);
   Logger.info(`   ⏰ 网格已就位，开始被动等待市场成交...`);
 };
