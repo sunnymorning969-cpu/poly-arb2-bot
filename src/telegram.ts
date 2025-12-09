@@ -50,18 +50,16 @@ export const notifyBotStarted = async () => {
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
-   • 最大组合成本: $${CONFIG.MAX_COMBINED_COST}
+   • 最大组合成本: $${CONFIG.MAX_COMBINED_COST} (核心风控)
    • 单次吃单上限: $${CONFIG.ORDER_SIZE_USD}
    • 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}
-   • 15分钟场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_15MIN * 100).toFixed(0)}% (实际最大12.5%)
-   • 1小时场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_1HR * 100).toFixed(0)}% (实际最大1.3%)
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
 
 📌 <b>策略说明:</b>
-   💰 动态吃单 + 总成本控制
-   🔗 不强制平衡，期望值为正
-   📊 基于实际交易数据分析
+   💰 只要组合成本 < $0.985，立即吃单
+   🔗 不限制不平衡，只看期望值
+   📊 基于实际交易者行为分析
 `.trim();
 
   await sendTelegramMessage(message, true);

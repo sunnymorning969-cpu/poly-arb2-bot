@@ -70,12 +70,12 @@ const shouldBuy = (
     const otherAvgCost = otherCost / otherShares;
     const combinedCost = price + otherAvgCost;
     
-    // 核心判断：组合成本必须 < 0.98
+    // 核心判断：组合成本必须 < 0.985
     return combinedCost < CONFIG.MAX_COMBINED_COST;
   }
   
   // 2. 对面没仓位 → 只要价格合理就买
-  return price < 0.50;
+  return price < 0.49;
 };
 
 /**
@@ -113,39 +113,6 @@ export const runMakerStrategy = async (): Promise<void> => {
         Logger.info(`📊 ${market.asset} 已达上限: $${totalInvestment.toFixed(2)} / $${CONFIG.MAX_EVENT_INVESTMENT_USD}`);
       }
       continue;
-    }
-    
-    // ========== 检查不平衡限制 ==========
-    const totalShares = state.upShares + state.downShares;
-    if (totalShares > 0) {
-      const imbalance = Math.abs(state.upShares - state.downShares);
-      const imbalanceRatio = imbalance / totalShares;
-      
-      // 根据时长选择不平衡限制
-      const maxImbalanceRatio = market.timeGroup === '15min'
-        ? CONFIG.MAX_IMBALANCE_RATIO_15MIN
-        : CONFIG.MAX_IMBALANCE_RATIO_1HR;
-      
-      // 如果已经太不平衡，优先买少的那边
-      if (imbalanceRatio > maxImbalanceRatio) {
-        const needSide = state.upShares < state.downShares ? 'up' : 'down';
-        const needPrice = needSide === 'up' ? upBook.bestAsk : downBook.bestAsk;
-        
-        // 检查是否应该买入
-        if (shouldBuy(needSide, needPrice, state)) {
-          const orderBudget = Math.min(
-            CONFIG.ORDER_SIZE_USD,
-            CONFIG.MAX_EVENT_INVESTMENT_USD - totalInvestment
-          );
-          const shares = Math.floor(orderBudget / needPrice);
-          
-          if (shares >= 1) {
-            await executeBuy(market, needSide, needPrice, shares, state);
-          }
-        }
-        
-        continue;  // 优先平衡，不考虑其他方向
-      }
     }
     
     // ========== 扫描 UP 和 DOWN 机会 ==========

@@ -33,8 +33,7 @@ const mainLoop = async () => {
   
   // 显示配置
   Logger.info(`模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}`);
-  Logger.info(`最大组合成本: $${CONFIG.MAX_COMBINED_COST}`);
-  Logger.info(`不平衡限制: 15分钟场 ${(CONFIG.MAX_IMBALANCE_RATIO_15MIN * 100).toFixed(0)}% | 1小时场 ${(CONFIG.MAX_IMBALANCE_RATIO_1HR * 100).toFixed(0)}%`);
+  Logger.info(`最大组合成本: $${CONFIG.MAX_COMBINED_COST} (核心风控)`);
   Logger.info(`单次吃单上限: $${CONFIG.ORDER_SIZE_USD} | 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}`);
   Logger.info(`扫描间隔: ${CONFIG.SCAN_INTERVAL_MS}ms`);
   Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'} | 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);

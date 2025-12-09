@@ -15,17 +15,13 @@ export const CONFIG = {
   
   // ========== 核心参数 ==========
   // 最大组合成本阈值 (avgUp + avgDown 必须小于此值)
-  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.98'),
+  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.985'),
   
   // 单次吃单金额/上限 (USD) - 防止单笔过大
   ORDER_SIZE_USD: parseFloat(process.env.ORDER_SIZE_USD || '20'),
   
   // 单事件最大投入 (USD) - 风控上限
   MAX_EVENT_INVESTMENT_USD: parseFloat(process.env.MAX_EVENT_INVESTMENT_USD || '5000'),
-  
-  // 最大允许不平衡比例 (按时长分组，基于实际交易数据分析)
-  MAX_IMBALANCE_RATIO_15MIN: parseFloat(process.env.MAX_IMBALANCE_RATIO_15MIN || '0.20'),  // 15分钟场: 20% (实际最大12.5%)
-  MAX_IMBALANCE_RATIO_1HR: parseFloat(process.env.MAX_IMBALANCE_RATIO_1HR || '0.05'),      // 1小时场: 5% (实际最大1.3%)
   
   // 扫描间隔 (毫秒)
   SCAN_INTERVAL_MS: 5,
