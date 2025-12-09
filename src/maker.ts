@@ -16,6 +16,15 @@ import { addPosition } from './positions';
  * 4. 持有到结算，不卖出
  */
 
+// 挂单信息
+interface PendingOrder {
+  orderId: string;
+  side: 'up' | 'down';
+  price: number;
+  shares: number;
+  timestamp: number;
+}
+
 // 每个市场的仓位状态
 interface MarketState {
   upShares: number;
@@ -23,6 +32,9 @@ interface MarketState {
   downShares: number;
   downCost: number;
   lastTradeTime: number;
+  lastUpPrice: number;    // 上次买入UP的价格
+  lastDownPrice: number;  // 上次买入DOWN的价格
+  pendingOrders: PendingOrder[];  // 挂单列表
 }
 
 // 每个市场的状态
@@ -31,6 +43,11 @@ const marketStates: Map<string, MarketState> = new Map();
 // 上次日志时间（节流）
 let lastLogTime = 0;
 const LOG_INTERVAL = 1000;
+
+// 交易冷却时间
+const MARKET_COOLDOWN_MS = 1500;  // 同一市场1.5秒冷却
+let lastGlobalTradeTime = 0;
+const GLOBAL_TRADE_INTERVAL_MS = 500;  // 全局0.5秒间隔
 
 /**
  * 获取或创建市场状态
@@ -43,20 +60,23 @@ const getMarketState = (slug: string): MarketState => {
       downShares: 0,
       downCost: 0,
       lastTradeTime: 0,
+      lastUpPrice: 0,
+      lastDownPrice: 0,
+      pendingOrders: [],
     });
   }
   return marketStates.get(slug)!;
 };
 
 /**
- * 判断是否应该买入
+ * 判断是否应该Taker吃单
  * 
  * @param side 买入方向
  * @param price 当前价格
  * @param state 市场状态
  * @returns 是否买入
  */
-const shouldBuy = (
+const shouldTakerBuy = (
   side: 'up' | 'down',
   price: number,
   state: MarketState
@@ -74,8 +94,65 @@ const shouldBuy = (
     return combinedCost < CONFIG.MAX_COMBINED_COST;
   }
   
-  // 2. 对面没仓位 → 只要价格合理就买
+  // 2. 对面没仓位 → 只要价格合理就买（会触发挂配对单）
   return price < 0.49;
+};
+
+/**
+ * 下限价单（Maker挂单）
+ */
+const placeLimitOrder = async (
+  market: any,
+  side: 'up' | 'down',
+  price: number,
+  shares: number,
+  state: MarketState
+): Promise<void> => {
+  if (CONFIG.SIMULATION_MODE) {
+    // 模拟模式：不真实下单，只记录
+    const orderId = `sim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    state.pendingOrders.push({
+      orderId,
+      side,
+      price,
+      shares,
+      timestamp: Date.now(),
+    });
+    
+    Logger.info(`📝 [模拟] 挂单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${price.toFixed(3)} (等待成交)`);
+  } else {
+    // 实盘模式：真实下单
+    try {
+      const client = await initClient();
+      const tokenId = side === 'up' ? market.upTokenId : market.downTokenId;
+      
+      const orderArgs = {
+        side: Side.BUY,
+        tokenID: tokenId,
+        amount: shares * price,
+        price: price,
+      };
+      
+      const signedOrder = await client.createOrder(orderArgs);
+      const resp = await client.postOrder(signedOrder, OrderType.GTC);  // Good-Till-Cancel
+      
+      if (resp.success && resp.orderID) {
+        state.pendingOrders.push({
+          orderId: resp.orderID,
+          side,
+          price,
+          shares,
+          timestamp: Date.now(),
+        });
+        
+        Logger.success(`📝 挂单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${price.toFixed(3)} (订单ID: ${resp.orderID.substring(0, 8)}...)`);
+      } else {
+        Logger.warning(`⚠️ 挂单失败: ${market.asset} ${side.toUpperCase()}`);
+      }
+    } catch (error) {
+      Logger.error(`挂单错误: ${error}`);
+    }
+  }
 };
 
 /**
@@ -115,10 +192,13 @@ export const runMakerStrategy = async (): Promise<void> => {
       continue;
     }
     
+    // ========== 检查挂单成交状态 ==========
+    await checkPendingOrders(market, state);
+    
     // ========== 扫描 UP 和 DOWN 机会 ==========
     // 注意：不在同一轮同时买入 UP 和 DOWN
-    const upShouldBuy = shouldBuy('up', upBook.bestAsk, state);
-    const downShouldBuy = shouldBuy('down', downBook.bestAsk, state);
+    const upShouldBuy = shouldTakerBuy('up', upBook.bestAsk, state);
+    const downShouldBuy = shouldTakerBuy('down', downBook.bestAsk, state);
     
     // 如果两边都能买，选择更便宜的那边（组合成本更低）
     let buyUp = false;
@@ -153,7 +233,15 @@ export const runMakerStrategy = async (): Promise<void> => {
       const shares = Math.floor(orderBudget / upBook.bestAsk);
       
       if (shares >= 1) {
-        await executeBuy(market, 'up', upBook.bestAsk, shares, state);
+        const success = await executeTakerBuy(market, 'up', upBook.bestAsk, shares, state);
+        
+        // 如果成功且对面没仓位，挂配对单
+        if (success && state.downShares === 0) {
+          const targetDownPrice = CONFIG.MAX_COMBINED_COST - upBook.bestAsk - 0.01;  // 留1%安全边际
+          if (targetDownPrice > 0.1 && targetDownPrice < 0.9) {
+            await placeLimitOrder(market, 'down', targetDownPrice, shares, state);
+          }
+        }
       }
     } else if (buyDown) {
       const orderBudget = Math.min(
@@ -163,7 +251,15 @@ export const runMakerStrategy = async (): Promise<void> => {
       const shares = Math.floor(orderBudget / downBook.bestAsk);
       
       if (shares >= 1) {
-        await executeBuy(market, 'down', downBook.bestAsk, shares, state);
+        const success = await executeTakerBuy(market, 'down', downBook.bestAsk, shares, state);
+        
+        // 如果成功且对面没仓位，挂配对单
+        if (success && state.upShares === 0) {
+          const targetUpPrice = CONFIG.MAX_COMBINED_COST - downBook.bestAsk - 0.01;  // 留1%安全边际
+          if (targetUpPrice > 0.1 && targetUpPrice < 0.9) {
+            await placeLimitOrder(market, 'up', targetUpPrice, shares, state);
+          }
+        }
       }
     }
     
@@ -184,9 +280,65 @@ export const runMakerStrategy = async (): Promise<void> => {
 };
 
 /**
- * 执行买入
+ * 检查挂单成交状态
  */
-const executeBuy = async (
+const checkPendingOrders = async (market: any, state: MarketState): Promise<void> => {
+  if (state.pendingOrders.length === 0) return;
+  
+  const now = Date.now();
+  
+  if (CONFIG.SIMULATION_MODE) {
+    // 模拟模式：随机成交挂单（5%概率）
+    const newPendingOrders: PendingOrder[] = [];
+    
+    for (const order of state.pendingOrders) {
+      const age = now - order.timestamp;
+      
+      // 挂单超过10秒，5%概率成交
+      if (age > 10000 && Math.random() < 0.05) {
+        // 模拟成交
+        if (order.side === 'up') {
+          state.upShares += order.shares;
+          state.upCost += order.shares * order.price;
+          state.lastUpPrice = order.price;
+        } else {
+          state.downShares += order.shares;
+          state.downCost += order.shares * order.price;
+          state.lastDownPrice = order.price;
+        }
+        
+        Logger.success(`🔗 [模拟] 挂单成交 ${market.asset} ${order.side.toUpperCase()} ${order.shares} @ $${order.price.toFixed(3)}`);
+        
+        // 同步到 positions
+        addPosition({
+          slug: market.slug,
+          asset: market.asset,
+          timeGroup: market.timeGroup,
+          upShares: order.side === 'up' ? order.shares : 0,
+          downShares: order.side === 'down' ? order.shares : 0,
+          upCost: order.side === 'up' ? order.shares * order.price : 0,
+          downCost: order.side === 'down' ? order.shares * order.price : 0,
+          totalCost: order.shares * order.price,
+          timestamp: now,
+          endTime: market.endTime,
+        });
+      } else {
+        // 未成交，保留
+        newPendingOrders.push(order);
+      }
+    }
+    
+    state.pendingOrders = newPendingOrders;
+  } else {
+    // 实盘模式：调用API检查订单状态
+    // TODO: 实现真实订单状态查询
+  }
+};
+
+/**
+ * 执行Taker买入（立即成交）
+ */
+const executeTakerBuy = async (
   market: any,
   side: 'up' | 'down',
   price: number,
@@ -195,6 +347,9 @@ const executeBuy = async (
 ): Promise<void> => {
   const now = Date.now();
   const cost = shares * price;
+  
+  // 更新全局交易时间
+  lastGlobalTradeTime = now;
   
   // 计算组合成本
   const otherSide = side === 'up' ? 'down' : 'up';
@@ -208,14 +363,16 @@ const executeBuy = async (
     if (side === 'up') {
       state.upShares += shares;
       state.upCost += cost;
+      state.lastUpPrice = price;
     } else {
       state.downShares += shares;
       state.downCost += cost;
+      state.lastDownPrice = price;
     }
     state.lastTradeTime = now;
     
     const tag = otherShares > 0 ? '🔗' : '💰';
-    Logger.success(`${tag} [模拟] 吃单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${price.toFixed(3)} | 组合: $${combinedCost.toFixed(3)}`);
+    Logger.success(`${tag} [模拟] Taker吃单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${price.toFixed(3)} | 组合: $${combinedCost.toFixed(3)}`);
     
     // 同步到 positions
     addPosition({
@@ -230,6 +387,8 @@ const executeBuy = async (
       timestamp: now,
       endTime: market.endTime,
     });
+    
+    return true;
   } else {
     // 实盘交易
     try {
@@ -255,9 +414,11 @@ const executeBuy = async (
         if (side === 'up') {
           state.upShares += shares;
           state.upCost += actualCost;
+          state.lastUpPrice = maxPrice;
         } else {
           state.downShares += shares;
           state.downCost += actualCost;
+          state.lastDownPrice = maxPrice;
         }
         state.lastTradeTime = now;
         
@@ -266,7 +427,7 @@ const executeBuy = async (
         const actualCombinedCost = maxPrice + actualOtherAvgCost;
         
         const tag = otherShares > 0 ? '🔗' : '💰';
-        Logger.success(`${tag} 吃单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${maxPrice.toFixed(3)} | 组合: $${actualCombinedCost.toFixed(3)}`);
+        Logger.success(`${tag} Taker吃单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${maxPrice.toFixed(3)} | 组合: $${actualCombinedCost.toFixed(3)}`);
         
         // 同步到 positions
         addPosition({
@@ -281,11 +442,15 @@ const executeBuy = async (
           timestamp: now,
           endTime: market.endTime,
         });
+        
+        return true;
       } else {
-        Logger.warning(`⚠️ 吃单未成交，等待下次扫描...`);
+        Logger.warning(`⚠️ Taker吃单未成交，等待下次扫描...`);
+        return false;
       }
     } catch (error) {
-      Logger.error(`吃单失败: ${error}`);
+      Logger.error(`Taker吃单失败: ${error}`);
+      return false;
     }
   }
 };

@@ -29,7 +29,7 @@ let lastTelegramTime = 0;
 
 // 主循环
 const mainLoop = async () => {
-  Logger.header('🎯 套利机器人 - 动态吃单 + 总成本控制');
+  Logger.header('🎯 套利机器人 - Taker+Maker混合策略');
   
   // 显示配置
   Logger.info(`模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}`);

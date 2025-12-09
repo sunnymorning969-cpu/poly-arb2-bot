@@ -57,9 +57,10 @@ export const notifyBotStarted = async () => {
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
 
 📌 <b>策略说明:</b>
-   💰 只要组合成本 < $0.985，立即吃单
-   🔗 不限制不平衡，只看期望值
-   📊 基于实际交易者行为分析
+   💰 Taker立即吃单 + Maker挂配对单
+   🔗 组合成本 < $0.985 (唯一风控)
+   📊 不限制不平衡，期望值为正即可
+   🎯 基于实际交易者行为分析
 `.trim();
 
   await sendTelegramMessage(message, true);
