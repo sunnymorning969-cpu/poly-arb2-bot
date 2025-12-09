@@ -6,6 +6,7 @@ import { getPositionCount, getTotalCost, getExpectedProfit, getStats, checkAndSe
 import { notifyBotStarted, notifySettlement, notifyRunningStats } from './telegram';
 import { closeWebSocket, getOrderBook } from './orderbook-ws';
 import { runMakerStrategy, getMakerStats, cancelAllOrders } from './maker';
+import { runGridStrategy, cancelAllGridOrders } from './maker-grid';
 
 const startTime = Date.now();
 
@@ -29,12 +30,20 @@ let lastTelegramTime = 0;
 
 // 主循环
 const mainLoop = async () => {
-  Logger.header('🎯 套利机器人 - Taker+Maker混合策略');
+  Logger.header(`🎯 套利机器人 - ${CONFIG.GRID_MODE ? '🌐 震荡网格模式' : 'Taker+Maker混合策略'}`);
   
   // 显示配置
   Logger.info(`模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}`);
-  Logger.info(`最大组合成本: $${CONFIG.MAX_COMBINED_COST} (核心风控)`);
-  Logger.info(`单次吃单上限: $${CONFIG.ORDER_SIZE_USD} | 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}`);
+  
+  if (CONFIG.GRID_MODE) {
+    Logger.info(`🔢 网格间隔: ${CONFIG.GRID_STEP} (${(CONFIG.GRID_STEP * 100).toFixed(0)}%)`);
+    Logger.info(`📦 每档数量: ${CONFIG.GRID_SHARES_PER_LEVEL} shares`);
+    Logger.info(`💰 总成本上限: $${CONFIG.MAX_COMBINED_COST} (核心风控)`);
+  } else {
+    Logger.info(`最大组合成本: $${CONFIG.MAX_COMBINED_COST} (核心风控)`);
+    Logger.info(`单次吃单上限: $${CONFIG.ORDER_SIZE_USD} | 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}`);
+  }
+  
   Logger.info(`扫描间隔: ${CONFIG.SCAN_INTERVAL_MS}ms`);
   Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'} | 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
   Logger.divider();
@@ -74,8 +83,12 @@ const mainLoop = async () => {
     try {
       scanCount++;
       
-      // 运行动态吃单策略
-      await runMakerStrategy();
+      // 运行策略
+      if (CONFIG.GRID_MODE) {
+        await runGridStrategy();
+      } else {
+        await runMakerStrategy();
+      }
       
       // 检查结算
       const settlements = await checkAndSettleExpired();
@@ -148,14 +161,22 @@ const mainLoop = async () => {
 // 优雅退出
 process.on('SIGINT', async () => {
   Logger.info('收到退出信号，正在关闭...');
-  await cancelAllOrders();
+  if (CONFIG.GRID_MODE) {
+    await cancelAllGridOrders();
+  } else {
+    await cancelAllOrders();
+  }
   closeWebSocket();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   Logger.info('收到终止信号，正在关闭...');
-  await cancelAllOrders();
+  if (CONFIG.GRID_MODE) {
+    await cancelAllGridOrders();
+  } else {
+    await cancelAllOrders();
+  }
   closeWebSocket();
   process.exit(0);
 });

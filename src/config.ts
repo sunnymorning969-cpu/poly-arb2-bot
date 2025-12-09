@@ -26,6 +26,11 @@ export const CONFIG = {
   // 扫描间隔 (毫秒)
   SCAN_INTERVAL_MS: 5,
   
+  // ========== 网格策略参数 ==========
+  GRID_MODE: process.env.GRID_MODE === 'true',  // 是否启用网格模式
+  GRID_STEP: parseFloat(process.env.GRID_STEP || '0.01'),  // 网格间隔
+  GRID_SHARES_PER_LEVEL: parseInt(process.env.GRID_SHARES_PER_LEVEL || '16'),  // 每档shares
+  
   // ========== 市场开关 ==========
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',
   ENABLE_1HR: process.env.ENABLE_1HR === '1',
