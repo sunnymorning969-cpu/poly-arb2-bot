@@ -161,10 +161,31 @@ export const runMakerStrategy = async (): Promise<void> => {
     }
     
     // ========== 步骤1：模拟 Maker 成交 ==========
+    // 真实逻辑：买单价格越高越容易被吃
     if (CONFIG.SIMULATION_MODE && state.slots.length > 0) {
+      const makerBook = state.makerSide === 'up' ? upBook : downBook;
+      const bestBid = makerBook.bestBid;  // 当前最高买价
+      const bestAsk = makerBook.bestAsk;  // 当前最低卖价
+      
       for (const slot of state.slots) {
         const pending = slot.shares - slot.filled;
-        if (pending > 0 && Math.random() < 0.08) {  // 8% 概率成交
+        if (pending <= 0) continue;
+        
+        // 成交概率取决于我们的挂单价格与市场的关系
+        let fillProb = 0;
+        
+        if (slot.price >= bestAsk) {
+          // 价格 >= bestAsk：相当于吃单，100%成交
+          fillProb = 1.0;
+        } else if (slot.price >= bestBid) {
+          // 价格在 bestBid 和 bestAsk 之间：我们是最优买单，有机会被卖家吃
+          fillProb = 0.03;  // 3% 概率
+        } else {
+          // 价格 < bestBid：我们排在队列后面，很难成交
+          fillProb = 0.005;  // 0.5% 概率
+        }
+        
+        if (Math.random() < fillProb) {
           const fillAmount = Math.min(pending, Math.ceil(Math.random() * 2));
           slot.filled += fillAmount;
           slot.cost += fillAmount * slot.price;
