@@ -56,7 +56,7 @@ const setup = async () => {
   console.log('\n━━━ 核心参数 ━━━');
   const maxCost = await question(`最大组合成本 (Up+Down < 此值) [0.995]: `) || '0.995';
   const orderSize = await question('单次挂单金额 (USD) [15]: ') || '15';
-  const maxInvestment = await question('单事件最大投入 (USD) [5000]: `) || '5000';
+  const maxInvestment = await question('单事件最大投入 (USD) [5000]: ') || '5000';
   
   // 市场选择
   console.log('\n━━━ 市场选择 ━━━');
