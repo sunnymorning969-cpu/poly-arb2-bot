@@ -21,9 +21,10 @@ interface GridOrder {
   orderId: string;
   side: 'up' | 'down';
   price: number;
-  shares: number;
+  shares: number;  // 总数量
+  filledShares: number;  // 已成交数量
+  remainingShares: number;  // 剩余数量
   timestamp: number;
-  filled: boolean;  // 是否已成交
   pairOrderId?: string;  // 配对订单ID
 }
 
@@ -82,12 +83,13 @@ const placeGridOrder = async (
       side,
       price: roundedPrice,
       shares,
+      filledShares: 0,
+      remainingShares: shares,
       timestamp: Date.now(),
-      filled: false,
       pairOrderId,
     });
     
-    Logger.info(`📝 [模拟] 挂网格单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${roundedPrice.toFixed(3)} (ID: ${orderId.slice(-8)})`);
+    // 不打印单个挂单日志，批量初始化完成后统一汇报
     return orderId;
   }
   
@@ -112,12 +114,12 @@ const placeGridOrder = async (
       side,
       price: roundedPrice,
       shares,
+      filledShares: 0,
+      remainingShares: shares,
       timestamp: Date.now(),
-      filled: false,
       pairOrderId,
     });
     
-    Logger.success(`📝 挂网格单 ${market.asset} ${side.toUpperCase()} ${shares} @ $${roundedPrice.toFixed(3)}`);
     return orderId;
   } catch (error: any) {
     Logger.error(`❌ 挂网格单失败 ${market.asset} ${side.toUpperCase()}: ${error.message}`);
@@ -191,55 +193,65 @@ const checkGridOrderFills = (market: any, state: GridMarketState): void => {
     return;
   }
   
-  // 检查每个未成交的挂单
+  // 检查每个未完全成交的挂单
   for (const order of state.gridOrders) {
-    if (order.filled) {
-      continue;
+    if (order.remainingShares <= 0) {
+      continue;  // 已全部成交
     }
     
     // 模拟成交逻辑：
     // 我们挂的是买单(BUY)，当市场卖单价格 <= 我们的买单价格时，会成交
-    const currentBestAsk = order.side === 'up' ? upBook.bestAsk : downBook.bestAsk;
+    const book = order.side === 'up' ? upBook : downBook;
+    const currentBestAsk = book.bestAsk;
+    const availableLiquidity = book.askSize;  // 市场可成交深度
     
-    if (order.price >= currentBestAsk) {
-      // 市场价格降到挂单价格以下，模拟成交
+    if (order.price >= currentBestAsk && availableLiquidity > 0) {
+      // 市场价格触及挂单价格，模拟成交
       const fillChance = Math.random();
-      if (fillChance > 0.85) {  // 15%概率成交（网格成交率较低）
-        order.filled = true;
+      if (fillChance > 0.90) {  // 10%概率成交（网格成交率较低）
+        // 根据市场深度计算可成交数量
+        const maxFillableShares = Math.floor(availableLiquidity * (order.price / currentBestAsk));
+        const actualFillShares = Math.min(order.remainingShares, maxFillableShares, Math.ceil(order.remainingShares * Math.random() * 0.5));  // 随机成交部分
         
-        // 更新持仓
-        if (order.side === 'up') {
-          state.upShares += order.shares;
-          state.upCost += order.shares * order.price;
-        } else {
-          state.downShares += order.shares;
-          state.downCost += order.shares * order.price;
+        if (actualFillShares > 0) {
+          // 更新订单状态
+          order.filledShares += actualFillShares;
+          order.remainingShares -= actualFillShares;
+          
+          // 更新持仓
+          if (order.side === 'up') {
+            state.upShares += actualFillShares;
+            state.upCost += actualFillShares * order.price;
+          } else {
+            state.downShares += actualFillShares;
+            state.downCost += actualFillShares * order.price;
+          }
+          
+          // 记录到positions
+          const upShares = order.side === 'up' ? actualFillShares : 0;
+          const upCost = order.side === 'up' ? actualFillShares * order.price : 0;
+          const downShares = order.side === 'down' ? actualFillShares : 0;
+          const downCost = order.side === 'down' ? actualFillShares * order.price : 0;
+          
+          addPosition({
+            slug: market.slug,
+            asset: market.asset,
+            timeGroup: market.timeGroup,
+            upShares,
+            downShares,
+            upCost,
+            downCost,
+            totalCost: upCost + downCost,
+            timestamp: Date.now(),
+            endTime: market.endTime,
+          });
+          
+          const pairOrder = order.pairOrderId ? state.gridOrders.find(o => o.orderId === order.pairOrderId) : null;
+          const combinedCost = pairOrder ? order.price + pairOrder.price : 0;
+          const fillPercent = (order.filledShares / order.shares * 100).toFixed(0);
+          
+          Logger.success(`✅ 🔗 [模拟] 网格单成交 ${market.asset} ${order.side.toUpperCase()} ${actualFillShares}/${order.shares} (${fillPercent}%) @ $${order.price.toFixed(3)} | 配对: $${combinedCost.toFixed(3)}`);
         }
-        
-        // 记录到positions
-        const upShares = order.side === 'up' ? order.shares : 0;
-        const upCost = order.side === 'up' ? order.shares * order.price : 0;
-        const downShares = order.side === 'down' ? order.shares : 0;
-        const downCost = order.side === 'down' ? order.shares * order.price : 0;
-        
-        addPosition({
-          slug: market.slug,
-          asset: market.asset,
-          timeGroup: market.timeGroup,
-          upShares,
-          downShares,
-          upCost,
-          downCost,
-          totalCost: upCost + downCost,
-          timestamp: Date.now(),
-          endTime: market.endTime,
-        });
-        
-        const combinedCost = (order.side === 'up' && order.pairOrderId)
-          ? order.price + (state.gridOrders.find(o => o.orderId === order.pairOrderId)?.price || 0)
-          : 0;
-        
-        Logger.success(`✅ 🔗 [模拟] 网格单成交 ${market.asset} ${order.side.toUpperCase()} ${order.shares} @ $${order.price.toFixed(3)} | 组合: $${combinedCost.toFixed(3)}`);
       }
     }
   }
@@ -303,16 +315,38 @@ export const runGridStrategy = async (): Promise<void> => {
     const { unrealizedPnL, investedCost } = calculatePnL(market, state);
     
     // 日志输出
-    if (shouldLog && (state.upShares > 0 || state.downShares > 0)) {
+    if (shouldLog && state.initialized) {
       const avgUp = state.upShares > 0 ? state.upCost / state.upShares : 0;
       const avgDown = state.downShares > 0 ? state.downCost / state.downShares : 0;
       const combinedCost = avgUp + avgDown;
       const imbalance = state.upShares - state.downShares;
-      const filledOrders = state.gridOrders.filter(o => o.filled).length;
-      const totalOrders = state.gridOrders.length;
       
-      Logger.info(`📊 ${market.asset}: UP ${state.upShares} @ $${avgUp.toFixed(3)} | DOWN ${state.downShares} @ $${avgDown.toFixed(3)} | 组合: $${combinedCost.toFixed(3)} | 不平衡: ${imbalance > 0 ? '+' : ''}${imbalance}`);
-      Logger.info(`   💰 投入: $${investedCost.toFixed(2)} | 未实现盈亏: ${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)} | 成交: ${filledOrders}/${totalOrders}`);
+      // 统计成交情况
+      let fullyFilledOrders = 0;
+      let partiallyFilledOrders = 0;
+      let pendingOrders = 0;
+      let totalFilledShares = 0;
+      let totalShares = 0;
+      
+      for (const order of state.gridOrders) {
+        totalShares += order.shares;
+        totalFilledShares += order.filledShares;
+        if (order.remainingShares === 0) {
+          fullyFilledOrders++;
+        } else if (order.filledShares > 0) {
+          partiallyFilledOrders++;
+        } else {
+          pendingOrders++;
+        }
+      }
+      
+      const fillRate = totalShares > 0 ? (totalFilledShares / totalShares * 100).toFixed(1) : '0.0';
+      
+      if (state.upShares > 0 || state.downShares > 0) {
+        Logger.info(`📊 ${market.asset}: UP ${state.upShares.toFixed(0)} @ $${avgUp.toFixed(3)} | DOWN ${state.downShares.toFixed(0)} @ $${avgDown.toFixed(3)} | 组合: $${combinedCost.toFixed(3)} | 不平衡: ${imbalance > 0 ? '+' : ''}${imbalance.toFixed(0)}`);
+        Logger.info(`   💰 投入: $${investedCost.toFixed(2)} | 未实现盈亏: ${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)} (${unrealizedPnL >= 0 ? '+' : ''}${(unrealizedPnL / investedCost * 100).toFixed(2)}%)`);
+        Logger.info(`   🌐 网格: 完成${fullyFilledOrders} | 部分${partiallyFilledOrders} | 待成交${pendingOrders} | 总成交率${fillRate}%`);
+      }
     }
   }
   
@@ -347,8 +381,11 @@ export const getGridStats = (): {
     totalDownCost += state.downCost;
     
     for (const order of state.gridOrders) {
-      if (order.filled) {
+      if (order.remainingShares === 0) {
         totalFilledOrders++;
+      } else if (order.filledShares > 0) {
+        totalFilledOrders += 0.5;  // 部分成交算0.5个
+        totalPendingOrders += 0.5;
       } else {
         totalPendingOrders++;
       }
