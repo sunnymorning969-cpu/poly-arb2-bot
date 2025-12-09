@@ -55,12 +55,12 @@ const setup = async () => {
   
   // 核心参数
   console.log('\n━━━ 核心参数 ━━━');
-  const maxCost = await question(`最大组合成本 (avgUp+avgDown < 此值) [0.98]: `) || '0.98';
-  const orderSize = await question('单次吃单金额 (USD) [20]: `) || '20';
-  const maxOrderAmount = await question('单次下单最大金额 (USD) [100]: `) || '100';
-  const maxInvestment = await question('单事件最大投入 (USD) [5000]: `) || '5000';
-  const maxImbalance15min = await question('15分钟场最大不平衡 (0.20 = 20%) [0.20]: `) || '0.20';
-  const maxImbalance1hr = await question('1小时场最大不平衡 (0.05 = 5%) [0.05]: `) || '0.05';
+  const maxCost = await question('最大组合成本 (avgUp+avgDown < 此值) [0.98]: ') || '0.98';
+  const orderSize = await question('单次吃单金额 (USD) [20]: ') || '20';
+  const maxOrderAmount = await question('单次下单最大金额 (USD) [100]: ') || '100';
+  const maxInvestment = await question('单事件最大投入 (USD) [5000]: ') || '5000';
+  const maxImbalance15min = await question('15分钟场最大不平衡 (0.20 = 20%) [0.20]: ') || '0.20';
+  const maxImbalance1hr = await question('1小时场最大不平衡 (0.05 = 5%) [0.05]: ') || '0.05';
   
   // 市场选择
   console.log('\n━━━ 市场选择 ━━━');
