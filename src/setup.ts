@@ -97,15 +97,22 @@ TELEGRAM_GROUP_ID=${telegramGroup}
 # ========== 运行模式 ==========
 SIMULATION_MODE=${simulationMode}
 
+# ========== 策略模式 ==========
+GRID_MODE=${isGridMode}
+
 # ========== 核心参数 ==========
 # 最大组合成本 (avgUp + avgDown < 此值才买入)
 MAX_COMBINED_COST=${maxCost}
 
-# 单次吃单金额/上限 (USD) - 防止单笔过大
+# 单次吃单金额/上限 (USD) - 防止单笔过大 (混合模式)
 ORDER_SIZE_USD=${orderSize}
 
-# 单事件最大投入 (USD)
+# 单事件最大投入 (USD) (混合模式)
 MAX_EVENT_INVESTMENT_USD=${maxInvestment}
+
+# ========== 网格参数 (仅网格模式) ==========
+GRID_STEP=${gridStep}
+GRID_SHARES_PER_LEVEL=${gridShares}
 
 # ========== 市场开关 ==========
 ENABLE_15MIN=${enable15min === '1' ? '1' : '0'}

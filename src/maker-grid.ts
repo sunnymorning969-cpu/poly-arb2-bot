@@ -203,15 +203,14 @@ const checkGridOrderFills = (market: any, state: GridMarketState): void => {
     // 我们挂的是买单(BUY)，当市场卖单价格 <= 我们的买单价格时，会成交
     const book = order.side === 'up' ? upBook : downBook;
     const currentBestAsk = book.bestAsk;
-    const availableLiquidity = book.askSize;  // 市场可成交深度
     
-    if (order.price >= currentBestAsk && availableLiquidity > 0) {
+    if (order.price >= currentBestAsk) {
       // 市场价格触及挂单价格，模拟成交
       const fillChance = Math.random();
       if (fillChance > 0.90) {  // 10%概率成交（网格成交率较低）
-        // 根据市场深度计算可成交数量
-        const maxFillableShares = Math.floor(availableLiquidity * (order.price / currentBestAsk));
-        const actualFillShares = Math.min(order.remainingShares, maxFillableShares, Math.ceil(order.remainingShares * Math.random() * 0.5));  // 随机成交部分
+        // 随机成交部分（10%-50%）
+        const fillRatio = 0.1 + Math.random() * 0.4;
+        const actualFillShares = Math.max(1, Math.ceil(order.remainingShares * fillRatio));
         
         if (actualFillShares > 0) {
           // 更新订单状态
@@ -421,7 +420,7 @@ export const cancelAllGridOrders = async (): Promise<void> => {
   
   for (const [slug, state] of marketStates.entries()) {
     for (const order of state.gridOrders) {
-      if (!order.filled) {
+      if (order.remainingShares > 0) {
         try {
           await client.cancelOrder({ orderID: order.orderId });
           Logger.info(`✅ 取消挂单 ${slug} ${order.side.toUpperCase()} @ $${order.price.toFixed(3)}`);
