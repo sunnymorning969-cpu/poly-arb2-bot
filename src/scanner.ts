@@ -319,7 +319,7 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
     for (const data of marketData) {
       const combinedCost = data.upAsk + data.downAsk;
       
-      if (combinedCost < CONFIG.MAX_SAME_POOL_COST) {
+      if (combinedCost < CONFIG.MAX_COMBINED_COST) {
         opportunities.push({
           type: 'same_pool',
           timeGroup: timeGroup as '15min' | '1hr',

@@ -50,15 +50,19 @@ export const notifyBotStarted = async () => {
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
-   • 最大组合成本: $${CONFIG.MAX_SAME_POOL_COST}
-   • 单轮挂单: $${CONFIG.MAKER_ORDER_SIZE_USD}
+   • 最大组合成本: $${CONFIG.MAX_COMBINED_COST}
+   • 单次吃单: $${CONFIG.ORDER_SIZE_USD}
+   • 单次下单上限: $${CONFIG.MAX_ORDER_AMOUNT_USD}
    • 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}
+   • 15分钟场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_15MIN * 100).toFixed(0)}% (实际最大12.5%)
+   • 1小时场不平衡: ${(CONFIG.MAX_IMBALANCE_RATIO_1HR * 100).toFixed(0)}% (实际最大1.3%)
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
 
 📌 <b>策略说明:</b>
-   📝 Maker挂单 + Taker配对
-   按深度分布到 3 档价格
+   💰 动态吃单 + 总成本控制
+   🔗 不强制平衡，期望值为正
+   📊 基于实际交易数据分析
 `.trim();
 
   await sendTelegramMessage(message, true);

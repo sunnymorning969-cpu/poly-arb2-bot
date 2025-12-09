@@ -7,7 +7,7 @@ import { addPosition } from './positions';
 
 // 本地常量（不再从 config 读取）
 const TRADE_COOLDOWN_MS = 1000; // 1秒冷却
-const MAX_ORDER_SIZE_USD = CONFIG.MAKER_ORDER_SIZE_USD; // 复用挂单金额
+const MAX_ORDER_SIZE_USD = CONFIG.ORDER_SIZE_USD; // 复用吃单金额
 
 // 上次交易时间
 let lastTradeTime = 0;

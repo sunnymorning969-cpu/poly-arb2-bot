@@ -14,20 +14,24 @@ export const CONFIG = {
   SIMULATION_MODE: process.env.SIMULATION_MODE !== 'false',
   
   // ========== 核心参数 ==========
-  // 最大组合成本阈值 (Up + Down 必须小于此值才交易)
-  MAX_SAME_POOL_COST: parseFloat(process.env.MAX_SAME_POOL_COST || '0.995'),
+  // 最大组合成本阈值 (avgUp + avgDown 必须小于此值)
+  MAX_COMBINED_COST: parseFloat(process.env.MAX_COMBINED_COST || '0.98'),
   
-  // 单轮挂单金额 (USD) - 会分布到多个价格档
-  MAKER_ORDER_SIZE_USD: parseFloat(process.env.MAKER_ORDER_SIZE_USD || '15'),
+  // 单次吃单金额 (USD)
+  ORDER_SIZE_USD: parseFloat(process.env.ORDER_SIZE_USD || '20'),
+  
+  // 单次下单最大金额 (USD) - 防止因深度过大下单过多
+  MAX_ORDER_AMOUNT_USD: parseFloat(process.env.MAX_ORDER_AMOUNT_USD || '100'),
   
   // 单事件最大投入 (USD) - 风控上限
   MAX_EVENT_INVESTMENT_USD: parseFloat(process.env.MAX_EVENT_INVESTMENT_USD || '5000'),
   
-  // 配对超时时间 (秒) - 超时后接受更高价格配对
-  PAIRING_TIMEOUT_SEC: parseInt(process.env.PAIRING_TIMEOUT_SEC || '300'),
+  // 最大允许不平衡比例 (按时长分组，基于实际交易数据分析)
+  MAX_IMBALANCE_RATIO_15MIN: parseFloat(process.env.MAX_IMBALANCE_RATIO_15MIN || '0.20'),  // 15分钟场: 20% (实际最大12.5%)
+  MAX_IMBALANCE_RATIO_1HR: parseFloat(process.env.MAX_IMBALANCE_RATIO_1HR || '0.05'),      // 1小时场: 5% (实际最大1.3%)
   
   // 扫描间隔 (毫秒)
-  SCAN_INTERVAL_MS: 100,
+  SCAN_INTERVAL_MS: 5,
   
   // ========== 市场开关 ==========
   ENABLE_15MIN: process.env.ENABLE_15MIN !== '0',

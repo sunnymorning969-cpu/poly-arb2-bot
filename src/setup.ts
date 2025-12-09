@@ -17,7 +17,7 @@ const setup = async () => {
   console.log('\n');
   console.log('═'.repeat(60));
   console.log('  🎯 套利机器人 - 配置向导');
-  console.log('  📝 策略: 低价挂单等待 + Taker配对');
+  console.log('  📝 策略: 动态吃单 + 总成本控制');
   console.log('═'.repeat(60));
   console.log('\n');
   
@@ -55,9 +55,12 @@ const setup = async () => {
   
   // 核心参数
   console.log('\n━━━ 核心参数 ━━━');
-  const maxCost = await question(`最大组合成本 (Up+Down < 此值) [0.995]: `) || '0.995';
-  const orderSize = await question('单次挂单金额 (USD) [15]: ') || '15';
-  const maxInvestment = await question('单事件最大投入 (USD) [5000]: ') || '5000';
+  const maxCost = await question(`最大组合成本 (avgUp+avgDown < 此值) [0.98]: `) || '0.98';
+  const orderSize = await question('单次吃单金额 (USD) [20]: `) || '20';
+  const maxOrderAmount = await question('单次下单最大金额 (USD) [100]: `) || '100';
+  const maxInvestment = await question('单事件最大投入 (USD) [5000]: `) || '5000';
+  const maxImbalance15min = await question('15分钟场最大不平衡 (0.20 = 20%) [0.20]: `) || '0.20';
+  const maxImbalance1hr = await question('1小时场最大不平衡 (0.05 = 5%) [0.05]: `) || '0.05';
   
   // 市场选择
   console.log('\n━━━ 市场选择 ━━━');
@@ -77,14 +80,21 @@ TELEGRAM_GROUP_ID=${telegramGroup}
 SIMULATION_MODE=${simulationMode}
 
 # ========== 核心参数 ==========
-# 最大组合成本 (目标价 = 此值 - 对面价格 - 0.01)
-MAX_SAME_POOL_COST=${maxCost}
+# 最大组合成本 (avgUp + avgDown < 此值才买入)
+MAX_COMBINED_COST=${maxCost}
 
-# 单次挂单金额 (USD)
-MAKER_ORDER_SIZE_USD=${orderSize}
+# 单次吃单金额 (USD)
+ORDER_SIZE_USD=${orderSize}
+
+# 单次下单最大金额 (USD) - 防止因深度过大下单过多
+MAX_ORDER_AMOUNT_USD=${maxOrderAmount}
 
 # 单事件最大投入 (USD)
 MAX_EVENT_INVESTMENT_USD=${maxInvestment}
+
+# 最大不平衡比例 (按时长分组，基于实际交易数据分析)
+MAX_IMBALANCE_RATIO_15MIN=${maxImbalance15min}  # 15分钟场 (实际最大12.5%)
+MAX_IMBALANCE_RATIO_1HR=${maxImbalance1hr}      # 1小时场 (实际最大1.3%)
 
 # ========== 市场开关 ==========
 ENABLE_15MIN=${enable15min === '1' ? '1' : '0'}
@@ -101,15 +111,18 @@ ENABLE_1HR=${enable1hr === '1' ? '1' : '0'}
   console.log('\n📝 配置摘要:');
   console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
   console.log(`   最大组合成本: $${maxCost}`);
-  console.log(`   单次挂单: $${orderSize}`);
+  console.log(`   单次吃单: $${orderSize}`);
+  console.log(`   单次下单上限: $${maxOrderAmount}`);
   console.log(`   单事件上限: $${maxInvestment}`);
+  console.log(`   15分钟场不平衡: ${(parseFloat(maxImbalance15min) * 100).toFixed(0)}% (实际最大12.5%)`);
+  console.log(`   1小时场不平衡: ${(parseFloat(maxImbalance1hr) * 100).toFixed(0)}% (实际最大1.3%)`);
   console.log(`   15分钟场: ${enable15min === '1' ? '✅' : '❌'}`);
   console.log(`   1小时场: ${enable1hr === '1' ? '✅' : '❌'}`);
   console.log('\n📌 策略说明:');
-  console.log('   1. 计算目标价 = 阈值 - 对面价格 - 安全边际');
-  console.log('   2. 挂低价单，耐心等待被吃');
-  console.log('   3. 只有能挂更低价格时才撤单重挂');
-  console.log('   4. 成交后立即 Taker 配对');
+  console.log('   1. 扫描订单簿，计算当前持仓平均成本');
+  console.log('   2. 如果 avgCost + newPrice < 0.98，立即吃单');
+  console.log('   3. 不强制平衡，接受一定不平衡（期望值为正）');
+  console.log('   4. 持有到结算，不卖出');
   console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();
