@@ -117,12 +117,6 @@ const placeLimitOrder = async (
     return;  // 已达上限，不再挂单
   }
   
-  // 检查是否已有相近价格的挂单（避免重复）
-  const similarOrder = sideOrders.find(o => Math.abs(o.price - price) < 0.05);
-  if (similarOrder) {
-    return;  // 已有相近价格的挂单
-  }
-  
   if (CONFIG.SIMULATION_MODE) {
     // 模拟模式：不真实下单，只记录
     const orderId = `sim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
