@@ -86,10 +86,6 @@ ORDER_SIZE_USD=${orderSize}
 # 单事件最大投入 (USD)
 MAX_EVENT_INVESTMENT_USD=${maxInvestment}
 
-# 最大不平衡比例 (按时长分组，基于实际交易数据分析)
-MAX_IMBALANCE_RATIO_15MIN=${maxImbalance15min}  # 15分钟场 (实际最大12.5%)
-MAX_IMBALANCE_RATIO_1HR=${maxImbalance1hr}      # 1小时场 (实际最大1.3%)
-
 # ========== 市场开关 ==========
 ENABLE_15MIN=${enable15min === '1' ? '1' : '0'}
 ENABLE_1HR=${enable1hr === '1' ? '1' : '0'}
