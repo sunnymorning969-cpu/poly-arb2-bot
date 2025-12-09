@@ -45,9 +45,12 @@ let lastLogTime = 0;
 const LOG_INTERVAL = 1000;
 
 // 交易冷却时间
-const MARKET_COOLDOWN_MS = 1500;  // 同一市场1.5秒冷却
+const MARKET_COOLDOWN_MS = 3000;  // 同一市场3秒冷却
 let lastGlobalTradeTime = 0;
-const GLOBAL_TRADE_INTERVAL_MS = 500;  // 全局0.5秒间隔
+const GLOBAL_TRADE_INTERVAL_MS = 1000;  // 全局1秒间隔
+
+// 挂单限制
+const MAX_PENDING_ORDERS_PER_SIDE = 3;  // 每个方向最多3个挂单
 
 /**
  * 获取或创建市场状态
@@ -108,6 +111,18 @@ const placeLimitOrder = async (
   shares: number,
   state: MarketState
 ): Promise<void> => {
+  // 检查该方向挂单数量限制
+  const sideOrders = state.pendingOrders.filter(o => o.side === side);
+  if (sideOrders.length >= MAX_PENDING_ORDERS_PER_SIDE) {
+    return;  // 已达上限，不再挂单
+  }
+  
+  // 检查是否已有相近价格的挂单（避免重复）
+  const similarOrder = sideOrders.find(o => Math.abs(o.price - price) < 0.05);
+  if (similarOrder) {
+    return;  // 已有相近价格的挂单
+  }
+  
   if (CONFIG.SIMULATION_MODE) {
     // 模拟模式：不真实下单，只记录
     const orderId = `sim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -235,11 +250,17 @@ export const runMakerStrategy = async (): Promise<void> => {
       if (shares >= 1) {
         const success = await executeTakerBuy(market, 'up', upBook.bestAsk, shares, state);
         
-        // 如果成功且对面没仓位，挂配对单
-        if (success && state.downShares === 0) {
-          const targetDownPrice = CONFIG.MAX_COMBINED_COST - upBook.bestAsk - 0.01;  // 留1%安全边际
-          if (targetDownPrice > 0.1 && targetDownPrice < 0.9) {
-            await placeLimitOrder(market, 'down', targetDownPrice, shares, state);
+        // 如果成功且对面没仓位或仓位很少，挂配对单
+        if (success) {
+          const downPendingShares = state.pendingOrders.filter(o => o.side === 'down').reduce((sum, o) => sum + o.shares, 0);
+          const totalDownExposure = state.downShares + downPendingShares;
+          
+          // 只有当DOWN总敞口（持仓+挂单）< UP持仓时才挂单
+          if (totalDownExposure < state.upShares) {
+            const targetDownPrice = CONFIG.MAX_COMBINED_COST - upBook.bestAsk - 0.01;
+            if (targetDownPrice > 0.1 && targetDownPrice < 0.9) {
+              await placeLimitOrder(market, 'down', targetDownPrice, shares, state);
+            }
           }
         }
       }
@@ -253,11 +274,17 @@ export const runMakerStrategy = async (): Promise<void> => {
       if (shares >= 1) {
         const success = await executeTakerBuy(market, 'down', downBook.bestAsk, shares, state);
         
-        // 如果成功且对面没仓位，挂配对单
-        if (success && state.upShares === 0) {
-          const targetUpPrice = CONFIG.MAX_COMBINED_COST - downBook.bestAsk - 0.01;  // 留1%安全边际
-          if (targetUpPrice > 0.1 && targetUpPrice < 0.9) {
-            await placeLimitOrder(market, 'up', targetUpPrice, shares, state);
+        // 如果成功且对面没仓位或仓位很少，挂配对单
+        if (success) {
+          const upPendingShares = state.pendingOrders.filter(o => o.side === 'up').reduce((sum, o) => sum + o.shares, 0);
+          const totalUpExposure = state.upShares + upPendingShares;
+          
+          // 只有当UP总敞口（持仓+挂单）< DOWN持仓时才挂单
+          if (totalUpExposure < state.downShares) {
+            const targetUpPrice = CONFIG.MAX_COMBINED_COST - downBook.bestAsk - 0.01;
+            if (targetUpPrice > 0.1 && targetUpPrice < 0.9) {
+              await placeLimitOrder(market, 'up', targetUpPrice, shares, state);
+            }
           }
         }
       }
