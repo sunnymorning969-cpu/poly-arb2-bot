@@ -129,8 +129,8 @@ const placeLimitOrder = async (
       const orderArgs = {
         side: Side.BUY,
         tokenID: tokenId,
-        amount: shares * price,
-        price: price,
+        size: shares,  // 数量
+        price: price,  // 价格
       };
       
       const signedOrder = await client.createOrder(orderArgs);
@@ -344,7 +344,7 @@ const executeTakerBuy = async (
   price: number,
   shares: number,
   state: MarketState
-): Promise<void> => {
+): Promise<boolean> => {
   const now = Date.now();
   const cost = shares * price;
   
@@ -402,11 +402,11 @@ const executeTakerBuy = async (
       const orderArgs = {
         side: Side.BUY,
         tokenID: tokenId,
-        amount: actualCost,
+        size: shares,
         price: maxPrice,
       };
       
-      const signedOrder = await client.createMarketOrder(orderArgs);
+      const signedOrder = await client.createOrder(orderArgs);
       const resp = await client.postOrder(signedOrder, OrderType.FOK);
       
       if (resp.success) {
