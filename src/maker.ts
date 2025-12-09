@@ -509,3 +509,34 @@ export const getMakerStats = (): {
 export const clearMarketState = (slug: string): void => {
   marketStates.delete(slug);
 };
+
+/**
+ * 取消所有挂单（退出时调用）
+ */
+export const cancelAllOrders = async (): Promise<void> => {
+  if (CONFIG.SIMULATION_MODE) {
+    Logger.info('模拟模式，无需取消订单');
+    return;
+  }
+  
+  try {
+    const client = await initClient();
+    
+    for (const [slug, state] of marketStates) {
+      for (const slot of state.slots) {
+        if (slot.orderId && slot.shares - slot.filled > 0) {
+          try {
+            await client.cancelOrder(slot.orderId);
+            Logger.info(`已取消订单: ${slot.orderId}`);
+          } catch (e) {
+            // 忽略取消失败
+          }
+        }
+      }
+    }
+    
+    Logger.success('所有挂单已取消');
+  } catch (error) {
+    Logger.error(`取消订单失败: ${error}`);
+  }
+};
