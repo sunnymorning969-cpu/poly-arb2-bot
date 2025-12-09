@@ -19,6 +19,7 @@ import { addPosition } from './positions';
 // 网格挂单信息
 interface GridOrder {
   orderId: string;
+  gridLevel: number;  // 网格档位编号（1, 2, 3...）
   side: 'up' | 'down';
   price: number;
   shares: number;  // 总数量
@@ -36,6 +37,7 @@ interface GridMarketState {
   downCost: number;
   gridOrders: GridOrder[];  // 所有网格挂单
   initialized: boolean;  // 是否已初始化网格
+  initTime: number;  // 初始化时间
 }
 
 // 每个市场的状态
@@ -57,6 +59,7 @@ const getMarketState = (slug: string): GridMarketState => {
       downCost: 0,
       gridOrders: [],
       initialized: false,
+      initTime: 0,
     });
   }
   return marketStates.get(slug)!;
@@ -71,6 +74,7 @@ const placeGridOrder = async (
   price: number,
   shares: number,
   state: GridMarketState,
+  gridLevel: number,
   pairOrderId?: string
 ): Promise<string | null> => {
   const roundedPrice = parseFloat(price.toFixed(3));
@@ -80,6 +84,7 @@ const placeGridOrder = async (
     const orderId = `grid-${side}-${roundedPrice}-${Date.now()}-${Math.random()}`;
     state.gridOrders.push({
       orderId,
+      gridLevel,
       side,
       price: roundedPrice,
       shares,
@@ -111,6 +116,7 @@ const placeGridOrder = async (
     const orderId = response.orderID;
     state.gridOrders.push({
       orderId,
+      gridLevel,
       side,
       price: roundedPrice,
       shares,
@@ -142,6 +148,7 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
   const maxCombinedCost = CONFIG.MAX_COMBINED_COST;
   
   let totalOrders = 0;
+  let gridLevel = 1;  // 档位编号从1开始
   
   // 从0.01开始，到0.97结束（确保DOWN >= 0.015）
   for (let upPrice = 0.01; upPrice <= 0.97; upPrice += gridStep) {
@@ -152,11 +159,11 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
       continue;
     }
     
-    // 挂UP单
-    const upOrderId = await placeGridOrder(market, 'up', upPrice, sharesPerLevel, state);
+    // 挂UP单（使用当前档位编号）
+    const upOrderId = await placeGridOrder(market, 'up', upPrice, sharesPerLevel, state, gridLevel);
     
-    // 挂配对的DOWN单
-    const downOrderId = await placeGridOrder(market, 'down', downPrice, sharesPerLevel, state, upOrderId || undefined);
+    // 挂配对的DOWN单（使用同一档位编号）
+    const downOrderId = await placeGridOrder(market, 'down', downPrice, sharesPerLevel, state, gridLevel, upOrderId || undefined);
     
     // 设置配对关系
     if (upOrderId && downOrderId) {
@@ -167,6 +174,7 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
     }
     
     totalOrders += 2;
+    gridLevel++;  // 下一档
     
     // 每10档休息一下，避免API限流
     if (totalOrders % 20 === 0) {
@@ -175,7 +183,19 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
   }
   
   state.initialized = true;
+  state.initTime = Date.now();
+  
+  // 统计价格区间
+  const upPrices = state.gridOrders.filter(o => o.side === 'up').map(o => o.price);
+  const downPrices = state.gridOrders.filter(o => o.side === 'down').map(o => o.price);
+  const minUp = Math.min(...upPrices);
+  const maxUp = Math.max(...upPrices);
+  const minDown = Math.min(...downPrices);
+  const maxDown = Math.max(...downPrices);
+  
   Logger.success(`✅ 网格初始化完成 ${market.asset}: 共挂 ${totalOrders} 单 (${totalOrders/2} 档)`);
+  Logger.info(`   📊 UP档位: $${minUp.toFixed(3)} - $${maxUp.toFixed(3)} | DOWN档位: $${minDown.toFixed(3)} - $${maxDown.toFixed(3)}`);
+  Logger.info(`   ⏰ 网格已就位，开始被动等待市场成交...`);
 };
 
 /**
@@ -184,6 +204,12 @@ const initializeGrid = async (market: any, state: GridMarketState): Promise<void
 const checkGridOrderFills = (market: any, state: GridMarketState): void => {
   if (!CONFIG.SIMULATION_MODE) {
     return;  // 真实模式需要查询API
+  }
+  
+  // 初始化后延迟3秒再开始检查成交，避免日志混乱
+  const timeSinceInit = Date.now() - state.initTime;
+  if (timeSinceInit < 3000) {
+    return;
   }
   
   const upBook = getOrderBook(market.upTokenId);
@@ -249,7 +275,7 @@ const checkGridOrderFills = (market: any, state: GridMarketState): void => {
           const combinedCost = pairOrder ? order.price + pairOrder.price : 0;
           const fillPercent = (order.filledShares / order.shares * 100).toFixed(0);
           
-          Logger.success(`✅ 🔗 [模拟] 网格单成交 ${market.asset} ${order.side.toUpperCase()} ${actualFillShares}/${order.shares} (${fillPercent}%) @ $${order.price.toFixed(3)} | 配对: $${combinedCost.toFixed(3)}`);
+          Logger.success(`✅ 🔗 [模拟] 网格#${order.gridLevel}成交 ${market.asset} ${order.side.toUpperCase()} ${actualFillShares}/${order.shares} shares (累计${fillPercent}%) @ $${order.price.toFixed(3)} | 配对价: $${combinedCost.toFixed(3)}`);
         }
       }
     }
