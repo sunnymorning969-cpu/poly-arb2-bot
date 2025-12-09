@@ -9,13 +9,23 @@ import WebSocket from 'ws';
 import CONFIG from './config';
 import Logger from './logger';
 
+interface PriceLevel {
+  price: number;
+  size: number;
+}
+
 interface OrderBook {
   bestBid: number;
   bestAsk: number;
   bestBidSize: number;
   bestAskSize: number;
+  // 多档深度（按价格排序）
+  bids: PriceLevel[];  // 从高到低
+  asks: PriceLevel[];  // 从低到高
   lastUpdate: number;
 }
+
+export type { OrderBook, PriceLevel };
 
 // 存储每个 tokenId 的订单簿
 const orderBooks: Map<string, OrderBook> = new Map();
@@ -26,7 +36,15 @@ const tokenToMarket: Map<string, { slug: string; outcome: 'up' | 'down' }> = new
 let ws: WebSocket | null = null;
 let isConnected = false;
 let reconnectTimer: NodeJS.Timeout | null = null;
+let heartbeatTimer: NodeJS.Timeout | null = null;
 let subscribedAssets: string[] = [];
+let lastPongTime = 0;
+
+// 心跳间隔（10秒发一次）
+const HEARTBEAT_INTERVAL = 10000;
+
+// 连接超时检测（30秒没收到pong就认为断开）
+const CONNECTION_TIMEOUT = 30000;
 
 export const subscribeToMarkets = (markets: Array<{ 
   slug: string; 
@@ -83,9 +101,15 @@ const connectWebSocket = (tokenIds: string[]) => {
       
       ws?.send(JSON.stringify(subscribeMsg));
       Logger.info(`📡 发送订阅请求: ${tokenIds.length} 个 token`);
+      
+      // 启动心跳
+      startHeartbeat();
     });
 
     ws.on('message', (data: WebSocket.Data) => {
+      // 收到任何消息都更新活跃时间
+      lastPongTime = Date.now();
+      
       try {
         const parsed = JSON.parse(data.toString());
         
@@ -130,14 +154,31 @@ const connectWebSocket = (tokenIds: string[]) => {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code: number, reason: Buffer) => {
       isConnected = false;
-      Logger.warning('WebSocket 连接关闭');
+      stopHeartbeat();
+      
+      // 解释常见关闭码
+      let codeInfo = '';
+      switch (code) {
+        case 1000: codeInfo = '正常关闭'; break;
+        case 1001: codeInfo = '端点离开'; break;
+        case 1006: codeInfo = '异常关闭'; break;
+        case 1008: codeInfo = '策略违规'; break;
+        case 1011: codeInfo = '服务器错误'; break;
+        default: codeInfo = '未知';
+      }
+      
+      Logger.warning(`WebSocket 关闭 [${code}: ${codeInfo}]`);
       scheduleReconnect(tokenIds);
     });
 
-    ws.on('error', (error) => {
+    ws.on('error', (error: Error) => {
       Logger.warning(`WebSocket 错误: ${error.message}`);
+    });
+    
+    ws.on('pong', () => {
+      lastPongTime = Date.now();
     });
 
   } catch (error) {
@@ -147,13 +188,53 @@ const connectWebSocket = (tokenIds: string[]) => {
 };
 
 const scheduleReconnect = (tokenIds: string[]) => {
+  // 避免重复调度
   if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
+    return;
   }
+  
   reconnectTimer = setTimeout(() => {
-    Logger.info('🔄 重新连接 WebSocket...');
-    connectWebSocket(tokenIds);
-  }, 5000);
+    reconnectTimer = null;
+    if (!isConnected && tokenIds.length > 0) {
+      Logger.info('🔄 重新连接 WebSocket...');
+      connectWebSocket(tokenIds);
+    }
+  }, 3000); // 缩短到3秒
+};
+
+// 心跳保活
+const startHeartbeat = () => {
+  stopHeartbeat();
+  lastPongTime = Date.now();
+  
+  heartbeatTimer = setInterval(() => {
+    if (ws && isConnected) {
+      try {
+        // 检查是否超时（长时间没收到任何消息）
+        const timeSinceLastPong = Date.now() - lastPongTime;
+        if (timeSinceLastPong > CONNECTION_TIMEOUT) {
+          Logger.warning(`心跳超时 ${(timeSinceLastPong / 1000).toFixed(0)}秒，重连...`);
+          ws.close();
+          return;
+        }
+        
+        // 发送 WebSocket ping 帧
+        ws.ping();
+        
+        // 同时发送 JSON ping（有些服务器需要这个）
+        ws.send(JSON.stringify({ type: 'ping' }));
+      } catch (e) {
+        // 忽略
+      }
+    }
+  }, HEARTBEAT_INTERVAL);
+};
+
+const stopHeartbeat = () => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 };
 
 const processBookUpdate = (msg: any) => {
@@ -170,40 +251,41 @@ const processBookUpdate = (msg: any) => {
   bids.forEach((bid: any) => {
     const price = parseFloat(bid.price);
     const size = parseFloat(bid.size);
-    bidPrices.set(price, (bidPrices.get(price) || 0) + size);
+    if (size > 0) {
+      bidPrices.set(price, (bidPrices.get(price) || 0) + size);
+    }
   });
 
   asks.forEach((ask: any) => {
     const price = parseFloat(ask.price);
     const size = parseFloat(ask.size);
-    askPrices.set(price, (askPrices.get(price) || 0) + size);
-  });
-
-  // 找最高买价
-  let bestBid = 0;
-  let bestBidSize = 0;
-  bidPrices.forEach((size, price) => {
-    if (price > bestBid) {
-      bestBid = price;
-      bestBidSize = size;
+    if (size > 0) {
+      askPrices.set(price, (askPrices.get(price) || 0) + size);
     }
   });
 
-  // 找最低卖价
-  let bestAsk = 1;
-  let bestAskSize = 0;
-  askPrices.forEach((size, price) => {
-    if (price < bestAsk) {
-      bestAsk = price;
-      bestAskSize = size;
-    }
-  });
+  // 转换为数组并排序
+  const bidLevels: PriceLevel[] = Array.from(bidPrices.entries())
+    .map(([price, size]) => ({ price, size }))
+    .sort((a, b) => b.price - a.price);  // 从高到低
+  
+  const askLevels: PriceLevel[] = Array.from(askPrices.entries())
+    .map(([price, size]) => ({ price, size }))
+    .sort((a, b) => a.price - b.price);  // 从低到高
+
+  // 找最优价格
+  const bestBid = bidLevels[0]?.price || 0;
+  const bestBidSize = bidLevels[0]?.size || 0;
+  const bestAsk = askLevels[0]?.price || 1;
+  const bestAskSize = askLevels[0]?.size || 0;
 
   orderBooks.set(tokenId, {
     bestBid,
     bestAsk,
     bestBidSize,
     bestAskSize,
+    bids: bidLevels.slice(0, 10),  // 保留前10档
+    asks: askLevels.slice(0, 10),
     lastUpdate: Date.now(),
   });
 };

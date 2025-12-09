@@ -17,7 +17,7 @@ const setup = async () => {
   console.log('\n');
   console.log('═'.repeat(60));
   console.log('  🎯 套利机器人 - 配置向导');
-  console.log('  📊 策略: 91% Maker + 9% Taker 配对');
+  console.log('  📝 策略: 低价挂单等待 + Taker配对');
   console.log('═'.repeat(60));
   console.log('\n');
   
@@ -35,75 +35,59 @@ const setup = async () => {
     });
   }
   
-  console.log('📋 请配置以下参数 (直接回车使用推荐值)\n');
+  console.log('📋 请配置以下参数 (直接回车使用默认值)\n');
   
   // 钱包配置
   console.log('━━━ 钱包配置 ━━━');
   const privateKey = await question(`私钥 [${existingEnv.PRIVATE_KEY ? '已配置' : '未配置'}]: `) || existingEnv.PRIVATE_KEY || '';
   const proxyWallet = await question(`代理钱包地址 (没有直接回车) [${existingEnv.PROXY_WALLET || '无'}]: `) || existingEnv.PROXY_WALLET || '';
   
+  // Telegram
+  console.log('\n━━━ Telegram 通知 ━━━');
+  const telegramToken = await question(`Bot Token [${existingEnv.TELEGRAM_BOT_TOKEN ? '已配置' : '未配置'}]: `) || existingEnv.TELEGRAM_BOT_TOKEN || '';
+  const telegramGroup = await question(`Group ID [${existingEnv.TELEGRAM_GROUP_ID || '未配置'}]: `) || existingEnv.TELEGRAM_GROUP_ID || '';
+  
   // 模式选择
   console.log('\n━━━ 运行模式 ━━━');
   const simMode = await question('模拟模式? (1=模拟, 0=实盘) [1]: ') || '1';
   const simulationMode = simMode !== '0';
   
-  // 策略参数（基于数据分析的推荐值）
-  console.log('\n━━━ 策略参数 (基于15000笔交易分析) ━━━');
-  console.log('   发现: 91% Maker单, 9% Taker单');
-  console.log('   发现: 配对平均需要20秒，不是同时');
-  console.log('   策略: 双边挂Maker，单边成交后Taker配对');
-  console.log('');
-  
-  const maxCombinedCost = await question('目标组合成本 (Up+Down < 此值) [0.99]: ') || '0.99';
-  const takerThreshold = await question('Taker配对最高价 (失衡时配对用) [0.65]: ') || '0.65';
-  const makerOrderSize = await question('单笔交易金额 (USD) [10]: ') || '10';
-  const makerMaxImbalance = await question('最大仓位失衡 (超过则强制平衡) [30]: ') || '30';
+  // 核心参数
+  console.log('\n━━━ 核心参数 ━━━');
+  const maxCost = await question(`最大组合成本 (Up+Down < 此值) [0.995]: `) || '0.995';
+  const orderSize = await question('单次挂单金额 (USD) [15]: ') || '15';
+  const maxInvestment = await question('单事件最大投入 (USD) [5000]: `) || '5000';
   
   // 市场选择
   console.log('\n━━━ 市场选择 ━━━');
-  const enable15min = await question('启用 15 分钟场? (1=是, 0=否) [1]: ') || '1';
-  const enable1hr = await question('启用 1 小时场? (1=是, 0=否) [0]: ') || '0';
+  const enable15min = await question('启用15分钟场? (1=是, 0=否) [1]: ') || '1';
+  const enable1hr = await question('启用1小时场? (1=是, 0=否) [0]: ') || '0';
   
   // 生成配置
-  const envContent = `# ═══════════════════════════════════════════════════════════
-# 套利机器人配置（基于15000笔交易分析）
-# 策略: 91% Maker + 9% Taker 配对
-# ═══════════════════════════════════════════════════════════
-
-# ========== 钱包配置 ==========
+  const envContent = `# ========== 钱包配置 ==========
 PRIVATE_KEY=${privateKey}
 PROXY_WALLET=${proxyWallet}
 
 # ========== Telegram 配置 ==========
-TELEGRAM_BOT_TOKEN=${existingEnv.TELEGRAM_BOT_TOKEN || '7698365045:AAGaPd7zLHdb4Ky7Tw0NobpcRCpNKWk-648'}
-TELEGRAM_GROUP_ID=${existingEnv.TELEGRAM_GROUP_ID || '@rickyhutest'}
+TELEGRAM_BOT_TOKEN=${telegramToken}
+TELEGRAM_GROUP_ID=${telegramGroup}
 
 # ========== 运行模式 ==========
 SIMULATION_MODE=${simulationMode}
 
-# ========== 核心策略参数 ==========
-# 目标组合成本（< $0.99 才有利润）
-MAX_COMBINED_COST=${maxCombinedCost}
+# ========== 核心参数 ==========
+# 最大组合成本 (目标价 = 此值 - 对面价格 - 0.01)
+MAX_SAME_POOL_COST=${maxCost}
 
-# Taker配对最高价（失衡时用Taker补单的最高价）
-TAKER_THRESHOLD=${takerThreshold}
+# 单次挂单金额 (USD)
+MAKER_ORDER_SIZE_USD=${orderSize}
+
+# 单事件最大投入 (USD)
+MAX_EVENT_INVESTMENT_USD=${maxInvestment}
 
 # ========== 市场开关 ==========
 ENABLE_15MIN=${enable15min === '1' ? '1' : '0'}
 ENABLE_1HR=${enable1hr === '1' ? '1' : '0'}
-
-# ========== 交易参数 ==========
-# 单笔交易金额 (USD)
-MAKER_ORDER_SIZE_USD=${makerOrderSize}
-
-# 最大仓位失衡 (超过此值会强制平衡)
-MAKER_MAX_IMBALANCE=${makerMaxImbalance}
-
-# 扫描间隔 (毫秒) - 5ms 极速扫描
-MAKER_INTERVAL_MS=5
-
-# 单笔最大 shares
-MAKER_MAX_SHARES_PER_ORDER=20
 `;
 
   // 写入文件
@@ -115,16 +99,16 @@ MAKER_MAX_SHARES_PER_ORDER=20
   console.log('═'.repeat(60));
   console.log('\n📝 配置摘要:');
   console.log(`   模式: ${simulationMode ? '🔵 模拟' : '🔴 实盘'}`);
-  console.log(`   目标组合成本: < $${maxCombinedCost}`);
-  console.log(`   Taker配对最高价: $${takerThreshold}`);
-  console.log(`   单笔金额: $${makerOrderSize}`);
-  console.log(`   最大失衡: ${makerMaxImbalance} shares`);
-  console.log(`   市场: ${enable15min === '1' ? '15分钟' : ''}${enable15min === '1' && enable1hr === '1' ? ' + ' : ''}${enable1hr === '1' ? '1小时' : ''}`);
-  console.log('\n📊 策略说明 (基于数据分析):');
-  console.log('   • 双边挂Maker单，等待成交 (91%交易)');
-  console.log('   • 单边成交后，用Taker配对 (9%交易)');
-  console.log('   • 配对不是同时的，平均间隔20秒');
-  console.log('   • 75%交易在前半段完成，早期进场');
+  console.log(`   最大组合成本: $${maxCost}`);
+  console.log(`   单次挂单: $${orderSize}`);
+  console.log(`   单事件上限: $${maxInvestment}`);
+  console.log(`   15分钟场: ${enable15min === '1' ? '✅' : '❌'}`);
+  console.log(`   1小时场: ${enable1hr === '1' ? '✅' : '❌'}`);
+  console.log('\n📌 策略说明:');
+  console.log('   1. 计算目标价 = 阈值 - 对面价格 - 安全边际');
+  console.log('   2. 挂低价单，耐心等待被吃');
+  console.log('   3. 只有能挂更低价格时才撤单重挂');
+  console.log('   4. 成交后立即 Taker 配对');
   console.log('\n运行 npm run dev 启动机器人\n');
   
   rl.close();

@@ -30,17 +30,14 @@ let lastTelegramTime = 0;
 
 // 主循环
 const mainLoop = async () => {
-  Logger.header('🎯 套利机器人 (91% Maker + 9% Taker)');
+  Logger.header('🎯 套利机器人 - Maker挂单 + Taker配对');
   
   // 显示配置
   Logger.info(`模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}`);
-  Logger.info(`目标组合成本: < $${CONFIG.MAX_COMBINED_COST}`);
-  Logger.info(`Taker配对最高价: $${CONFIG.TAKER_THRESHOLD}`);
-  Logger.info(`单笔金额: $${CONFIG.MAKER_ORDER_SIZE_USD}`);
-  Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}`);
-  Logger.info(`1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
-  Logger.info(`最大失衡: ${CONFIG.MAKER_MAX_IMBALANCE} shares`);
-  Logger.info(`策略: 双边挂Maker，单边成交后Taker配对`);
+  Logger.info(`最大组合成本: $${CONFIG.MAX_SAME_POOL_COST}`);
+  Logger.info(`单轮挂单: $${CONFIG.MAKER_ORDER_SIZE_USD} | 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}`);
+  Logger.info(`配对超时: ${CONFIG.PAIRING_TIMEOUT_SEC}秒`);
+  Logger.info(`15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'} | 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}`);
   Logger.divider();
   
   // 实盘模式初始化
@@ -101,7 +98,7 @@ const mainLoop = async () => {
         }
       }
       
-      // 运行策略（Maker + Taker配对）
+      // 运行挂单策略
       await runMakerStrategy();
       await checkOrderStatus();
       
@@ -131,11 +128,11 @@ const mainLoop = async () => {
         
         Logger.info(`📊 WS: ${bookCount} books | 仓位: ${posCount} | 结算: ${stats.totalSettled} | 盈亏: ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}${balanceInfo}`);
         
-        // 显示交易统计
+        // 显示挂单统计
         const makerStats = getMakerStats();
         if (makerStats.totalUp > 0 || makerStats.totalDown > 0) {
           const diff = makerStats.totalUp - makerStats.totalDown;
-          Logger.info(`   📝 累计: Up ${makerStats.totalUp} ($${makerStats.totalUpCost.toFixed(2)}) / Down ${makerStats.totalDown} ($${makerStats.totalDownCost.toFixed(2)}) | 平均成本: $${makerStats.avgCost.toFixed(4)} | 差额: ${diff >= 0 ? '+' : ''}${diff}`);
+          Logger.info(`   📝 挂单累计: Up ${makerStats.totalUp} ($${makerStats.totalUpCost.toFixed(2)}) / Down ${makerStats.totalDown} ($${makerStats.totalDownCost.toFixed(2)}) | 平均成本: $${makerStats.avgCost.toFixed(4)} | 待配对: ${makerStats.pendingPairs}`);
         }
         
         // 显示当前市场成本（诊断）
@@ -145,7 +142,7 @@ const mainLoop = async () => {
           const downBook = getOrderBook(m.downTokenId);
           if (upBook && downBook && upBook.bestAsk > 0 && downBook.bestAsk > 0) {
             const cost = upBook.bestAsk + downBook.bestAsk;
-            const status = cost < CONFIG.MAX_COMBINED_COST ? '✅可套利' : '❌等待中';
+            const status = cost < CONFIG.MAX_SAME_POOL_COST ? '✅可套利' : '❌等待中';
             Logger.info(`   💹 ${m.asset}: Up $${upBook.bestAsk.toFixed(3)} + Down $${downBook.bestAsk.toFixed(3)} = $${cost.toFixed(4)} ${status}`);
           }
         }
@@ -165,7 +162,7 @@ const mainLoop = async () => {
       }
       
       // 等待下一次扫描
-      await new Promise(resolve => setTimeout(resolve, CONFIG.MAKER_INTERVAL_MS));
+      await new Promise(resolve => setTimeout(resolve, CONFIG.SCAN_INTERVAL_MS));
       
     } catch (error) {
       Logger.error(`主循环错误: ${error}`);

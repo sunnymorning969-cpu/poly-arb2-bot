@@ -214,17 +214,9 @@ export const refreshMarkets = async (): Promise<MarketInfo[]> => {
     return cachedMarkets;
   }
   
-  // slug 变化了，需要撤销旧事件的挂单
+  // slug 变化了
   if (slugsChanged && lastSlugs.length > 0) {
-    Logger.info(`🔄 检测到事件切换，撤销旧事件挂单并更新市场订阅...`);
-    
-    // 找出被替换的旧 slug，撤销其挂单
-    const { cancelOrdersForSlug } = await import('./maker');
-    for (const oldSlug of lastSlugs) {
-      if (!currentSlugs.includes(oldSlug)) {
-        await cancelOrdersForSlug(oldSlug);
-      }
-    }
+    Logger.info(`🔄 检测到事件切换，更新市场订阅...`);
   }
   
   Logger.info(`📡 获取市场: ${currentSlugs.join(', ')}`);
@@ -327,7 +319,7 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
     for (const data of marketData) {
       const combinedCost = data.upAsk + data.downAsk;
       
-      if (combinedCost < CONFIG.MAX_COMBINED_COST) {
+      if (combinedCost < CONFIG.MAX_SAME_POOL_COST) {
         opportunities.push({
           type: 'same_pool',
           timeGroup: timeGroup as '15min' | '1hr',
@@ -345,7 +337,7 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
     }
     
     // 2. 跨池套利（默认关闭，有方向风险）
-    if (false /* 跨池套利已禁用 */ && marketData.length >= 2) {
+    if (CONFIG.ENABLE_CROSS_POOL && marketData.length >= 2) {
       let cheapestUp = marketData[0];
       let cheapestDown = marketData[0];
       
@@ -357,7 +349,7 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
       if (cheapestUp.market.asset !== cheapestDown.market.asset) {
         const combinedCost = cheapestUp.upAsk + cheapestDown.downAsk;
         
-        if (combinedCost < CONFIG.MAX_COMBINED_COST) {
+        if (combinedCost < CONFIG.MAX_SAME_POOL_COST) {
           opportunities.push({
             type: 'cross_pool',
             timeGroup: timeGroup as '15min' | '1hr',
@@ -375,7 +367,7 @@ export const scanArbitrageOpportunities = async (): Promise<ArbitrageOpportunity
         
         // 反向跨池
         const reverseCost = cheapestDown.upAsk + cheapestUp.downAsk;
-        if (reverseCost < CONFIG.MAX_COMBINED_COST) {
+        if (reverseCost < CONFIG.MAX_SAME_POOL_COST) {
           opportunities.push({
             type: 'cross_pool',
             timeGroup: timeGroup as '15min' | '1hr',

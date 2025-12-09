@@ -44,10 +44,8 @@ export const addPosition = (pos: Position) => {
     existing.upCost += pos.upCost;
     existing.downCost += pos.downCost;
     existing.totalCost += pos.totalCost;
-    Logger.info(`   📦 仓位累加: ${pos.asset} ${pos.timeGroup} -> Up ${existing.upShares} / Down ${existing.downShares} ($${existing.totalCost.toFixed(2)})`);
   } else {
     positions.set(pos.slug, { ...pos });
-    Logger.info(`   📦 新仓位: ${pos.asset} ${pos.timeGroup} Up ${pos.upShares} / Down ${pos.downShares} ($${pos.totalCost.toFixed(2)})`);
   }
 };
 

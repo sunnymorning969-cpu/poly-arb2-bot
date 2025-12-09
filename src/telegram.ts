@@ -46,20 +46,19 @@ const processQueue = async () => {
 // 发送启动通知
 export const notifyBotStarted = async () => {
   const message = `
-🚀 <b>套利机器人启动</b>
+🚀 <b>【进化版】套利机器人启动</b>
 
 ⚙️ <b>配置:</b>
    • 模式: ${CONFIG.SIMULATION_MODE ? '🔵 模拟' : '🔴 实盘'}
-   • 目标组合成本: < $${CONFIG.MAX_COMBINED_COST}
-   • Taker配对最高价: $${CONFIG.TAKER_THRESHOLD}
-   • 单笔金额: $${CONFIG.MAKER_ORDER_SIZE_USD}
+   • 最大组合成本: $${CONFIG.MAX_SAME_POOL_COST}
+   • 单轮挂单: $${CONFIG.MAKER_ORDER_SIZE_USD}
+   • 单事件上限: $${CONFIG.MAX_EVENT_INVESTMENT_USD}
    • 15分钟场: ${CONFIG.ENABLE_15MIN ? '✅' : '❌'}
    • 1小时场: ${CONFIG.ENABLE_1HR ? '✅' : '❌'}
 
-📌 <b>策略 (91% Maker + 9% Taker):</b>
-   • 双边挂Maker单，等待成交
-   • 单边成交后，用Taker配对
-   • 最大仓位失衡: ${CONFIG.MAKER_MAX_IMBALANCE} shares
+📌 <b>策略说明:</b>
+   📝 Maker挂单 + Taker配对
+   按深度分布到 3 档价格
 `.trim();
 
   await sendTelegramMessage(message, true);
@@ -78,23 +77,10 @@ export const notifySettlement = async (
   const profitPercent = position.totalCost > 0 ? (profit / position.totalCost) * 100 : 0;
   const timeGroupName = position.timeGroup === '15min' ? '15分钟场' : '1小时场';
   
-  // 检测仓位平衡状态
-  const imbalance = position.upShares - position.downShares;
-  const isBalanced = Math.abs(imbalance) <= 2;
-  const isSingleSide = position.upShares === 0 || position.downShares === 0;
-  
-  // 仓位状态标记
-  let balanceTag = '';
-  if (isSingleSide) {
-    balanceTag = '\n⚠️ <b>单边仓位（异常）</b>';
-  } else if (!isBalanced) {
-    balanceTag = `\n⚠️ <b>仓位失衡 (${imbalance >= 0 ? '+' : ''}${imbalance.toFixed(0)})</b>`;
-  }
-  
   const message = `
-${profitEmoji} <b>【Maker套利】${timeGroupName} 第${stats.totalSettled}次结算</b>
+${profitEmoji} <b>【进化版】${timeGroupName} 第${stats.totalSettled}次结算</b>
 
-📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>${balanceTag}
+📊 <b>${position.asset} ${outcomeEmoji} ${outcome.toUpperCase()} 获胜</b>
 
 💰 <b>本次仓位:</b>
    • Up: ${position.upShares.toFixed(0)} shares ($${position.upCost.toFixed(2)})
@@ -128,7 +114,7 @@ export const notifyRunningStats = async (stats: {
   const profitEmoji = stats.totalProfit >= 0 ? '📈' : '📉';
   
   const message = `
-📊 <b>【Maker套利】运行统计</b>
+📊 <b>【进化版】运行统计</b>
 
 ⏱️ 运行时间: ${stats.runtime}
 
@@ -141,63 +127,6 @@ export const notifyRunningStats = async (stats: {
    • 事件数: ${stats.totalSettled}
    • 胜率: ${stats.winRate.toFixed(1)}% (${stats.winCount}胜/${stats.lossCount}负)
    • ${profitEmoji} 累计盈亏: ${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}
-
-${CONFIG.SIMULATION_MODE ? '⚠️ <i>模拟模式</i>' : ''}
-`.trim();
-
-  await sendTelegramMessage(message, false);
-};
-
-// 发送事件结束总结（事件切换时调用）
-export const notifyEventSummary = async (summary: {
-  slug: string;
-  asset: string;
-  timeGroup: string;
-  upFilled: number;
-  upCost: number;
-  downFilled: number;
-  downCost: number;
-  avgCost: number;  // -1 表示单边成交，无法计算
-  imbalance: number;
-}) => {
-  const { slug, asset, timeGroup, upFilled, upCost, downFilled, downCost, avgCost, imbalance } = summary;
-  
-  const totalShares = upFilled + downFilled;
-  const totalCost = upCost + downCost;
-  const timeGroupName = timeGroup === '15min' ? '15分钟场' : '1小时场';
-  
-  // 如果没有任何成交，不发送通知
-  if (totalShares === 0) return;
-  
-  const balanceStatus = Math.abs(imbalance) <= 2 ? '✅ 平衡' : `⚠️ 失衡 ${imbalance >= 0 ? '+' : ''}${imbalance}`;
-  
-  // 计算配对数量和预期利润
-  const pairedShares = Math.min(upFilled, downFilled);
-  const hasValidAvgCost = avgCost > 0;  // avgCost = -1 表示无效
-  const expectedProfit = hasValidAvgCost ? pairedShares * (1 - avgCost) : 0;
-  
-  // 平均成本显示
-  const avgCostDisplay = hasValidAvgCost ? `$${avgCost.toFixed(4)}` : '⚠️ 单边成交';
-  const profitDisplay = hasValidAvgCost 
-    ? `${expectedProfit >= 0 ? '+' : ''}$${expectedProfit.toFixed(2)}`
-    : '⚠️ 需结算确认';
-  
-  const message = `
-📋 <b>【Maker套利】事件周期结束</b>
-
-📊 <b>${asset} ${timeGroupName}</b>
-
-💼 <b>本周期成交:</b>
-   • Up: ${upFilled} shares ($${upCost.toFixed(2)})
-   • Down: ${downFilled} shares ($${downCost.toFixed(2)})
-   • 总成本: $${totalCost.toFixed(2)}
-   • 平均组合成本: ${avgCostDisplay}
-
-📈 <b>状态:</b>
-   • 配对: ${pairedShares} 对 | ${balanceStatus}
-   • 预期利润: ${profitDisplay}
-
-⏳ 等待结算结果...
 
 ${CONFIG.SIMULATION_MODE ? '⚠️ <i>模拟模式</i>' : ''}
 `.trim();
@@ -220,7 +149,7 @@ export const notifyTrade = async (
   const typeTag = type === 'same_pool' ? '📊 同池套利' : '🔀 跨池套利';
   
   const message = `
-💰 <b>【Maker套利】${typeTag}成交</b>
+💰 <b>【进化版】${typeTag}成交</b>
 
 📊 <b>${timeGroup === '15min' ? '15分钟' : '1小时'}场 - ${pairInfo}</b>
 
