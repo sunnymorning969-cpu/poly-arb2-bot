@@ -41,8 +41,8 @@ interface MarketState {
   firstUnpairedTime: number;
 }
 
-// 配对超时时间 - 超过后接受更高价格配对
-const PAIRING_TIMEOUT_MS = CONFIG.PAIRING_TIMEOUT_SEC * 1000;
+// 配对超时时间 - 超过后接受更高价格配对（缩短到60秒，避免事件结束前还没配对）
+const PAIRING_TIMEOUT_MS = 60 * 1000;  // 60秒，不是300秒
 
 // 挂单检查间隔 (秒) - 检查是否能挂更低价格
 const ORDER_CHECK_SEC = 5;
@@ -104,10 +104,10 @@ const decideMakerSide = (
 };
 
 /**
- * 计算目标挂单价格（低价等待版）
+ * 计算目标挂单价格（保守版）
  * 
- * 策略：目标价 = MAX_COST - 对面bestAsk - 安全边际
- * 这样即使对面价格略涨，我们仍有利润空间
+ * 策略：只有当对面价格 < 0.65 时才值得挂单
+ * 因为我们需要 组合成本 < 0.995，如果对面太贵，我们要挂太低的价格
  * 
  * @param otherSideBestAsk 另一边的 bestAsk（Taker配对价格）
  * @param budget 预算
@@ -117,13 +117,19 @@ const calculateTargetOrder = (
   otherSideBestAsk: number,
   budget: number
 ): { price: number; shares: number } | null => {
+  // 如果对面价格太贵，不值得挂单（挂出来的价格太低，没人会卖给你）
+  // 例如：对面 $0.80，我们要挂 $0.185，太低了
+  if (otherSideBestAsk > 0.65) {
+    return null;  // 等对面便宜一点再挂
+  }
+  
   // 目标价格 = 阈值 - 对面价格 - 安全边际
-  // 例如：0.995 - 0.60 - 0.01 = 0.385
+  // 例如：0.995 - 0.55 - 0.01 = 0.435
   const targetPrice = Math.round((CONFIG.MAX_SAME_POOL_COST - otherSideBestAsk - SAFETY_MARGIN) * 100) / 100;
   
-  // 价格范围检查（不能太低或太高）
-  if (targetPrice < 0.10 || targetPrice > 0.90) {
-    return null;
+  // 价格范围检查
+  if (targetPrice < 0.25 || targetPrice > 0.75) {
+    return null;  // 只在合理范围内挂单
   }
   
   // 计算数量
@@ -154,11 +160,9 @@ export const runMakerStrategy = async (): Promise<void> => {
     const state = getMarketState(market.slug);
     const stats = getStateStats(state);
     
-    // 检查是否接近结算时间（2分钟内停止新挂单）
+    // 检查是否接近结算时间
     const timeToEnd = market.endTime.getTime() - now;
-    if (timeToEnd < 2 * 60 * 1000 && timeToEnd > 0) {
-      continue;
-    }
+    const isNearEnd = timeToEnd < 2 * 60 * 1000 && timeToEnd > 0;  // 2分钟内
     
     // ========== 步骤1：模拟 Maker 成交 ==========
     // 真实逻辑：买单价格越高越容易被吃
@@ -216,10 +220,13 @@ export const runMakerStrategy = async (): Promise<void> => {
       
       const waitingTime = now - state.firstUnpairedTime;
       const isTimeout = waitingTime > PAIRING_TIMEOUT_MS;
-      const costThreshold = isTimeout ? 1.0 : CONFIG.MAX_SAME_POOL_COST;
+      
+      // 强制配对条件：超时 或 事件快结束了
+      const mustPair = isTimeout || isNearEnd;
+      const costThreshold = mustPair ? 1.05 : CONFIG.MAX_SAME_POOL_COST;  // 强制时接受5%亏损
       
       if (combinedCost < costThreshold) {
-        const isForced = isTimeout && combinedCost >= CONFIG.MAX_SAME_POOL_COST;
+        const isForced = mustPair && combinedCost >= CONFIG.MAX_SAME_POOL_COST;
         
         if (CONFIG.SIMULATION_MODE) {
           // 模拟配对
@@ -294,8 +301,9 @@ export const runMakerStrategy = async (): Promise<void> => {
       } else {
         const waitingSec = Math.floor(waitingTime / 1000);
         const timeoutSec = Math.floor(PAIRING_TIMEOUT_MS / 1000);
+        const nearEndTag = isNearEnd ? ' ⏰事件即将结束!' : '';
         if (shouldLog) {
-          Logger.warning(`⚠️ ${market.asset} 等待配对: ${takerSide} $${takerPrice.toFixed(3)} 太贵 (组合 $${combinedCost.toFixed(3)}) [${waitingSec}/${timeoutSec}秒]`);
+          Logger.warning(`⚠️ ${market.asset} 等待配对: ${takerSide} $${takerPrice.toFixed(3)} 太贵 (组合 $${combinedCost.toFixed(3)}) [${waitingSec}/${timeoutSec}秒]${nearEndTag}`);
         }
       }
       
@@ -362,6 +370,11 @@ export const runMakerStrategy = async (): Promise<void> => {
       continue;
     }
     
+    // 事件快结束时不开新仓位
+    if (isNearEnd) {
+      continue;
+    }
+    
     // ========== 步骤6：计算并挂单 ==========
     const remainingBudget = (CONFIG.MAX_EVENT_INVESTMENT_USD - currentInvestment) / 2;
     const orderBudget = Math.min(remainingBudget, CONFIG.MAKER_ORDER_SIZE_USD);
@@ -370,7 +383,10 @@ export const runMakerStrategy = async (): Promise<void> => {
     
     if (!order) {
       if (shouldLog) {
-        Logger.info(`⏳ ${market.asset} 无法挂单: 目标价 $${targetPrice.toFixed(2)} 超出范围`);
+        const reason = takerBook.bestAsk > 0.65 
+          ? `对面价格 $${takerBook.bestAsk.toFixed(2)} 太贵，等便宜点`
+          : `目标价 $${targetPrice.toFixed(2)} 超出范围`;
+        Logger.info(`⏳ ${market.asset} 等待: ${reason}`);
         lastLogTime = now;
       }
       continue;
